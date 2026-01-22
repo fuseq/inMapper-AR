@@ -5,206 +5,107 @@
     <meta charset='utf-8'>
     <meta http-equiv='X-UA-Compatible' content='IE=edge'>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>AR Navigation</title>
+    <title>GeoAR.js demo</title>
     <script src="https://aframe.io/releases/1.3.0/aframe.min.js"></script>
     <script src="https://raw.githack.com/jeromeetienne/AR.js/master/aframe/build/aframe-ar.min.js"></script>
     <script src="https://raw.githack.com/donmccurdy/aframe-extras/master/dist/aframe-extras.loaders.min.js"></script>
     <script>
         THREEx.ArToolkitContext.baseURL = 'https://raw.githack.com/jeromeetienne/ar.js/master/three.js/'
     </script>
+    <script src="https://unpkg.com/@joeyklee/compass.js@latest/dist/compass.js"></script>
+    <script src="https://kit.fontawesome.com/a076d05399.js"></script>
     <script src="./map-direction.js"></script>
-    <!-- Modern AR Styles -->
-    <link rel="stylesheet" type="text/css" href="./ar-styles.css" />
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <!-- Google Fonts -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <style>
-        :root { --font-main: 'Inter', sans-serif; }
-    </style>
+    <link rel="stylesheet" type="text/css" href="./style.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.4.2/css/all.css"
+        integrity="sha384-/rXc/GQVaYpyDdyxK+ecHPVYJSN9bmVFBvjA/9eOB+pb3F2w2N6fc5qB9Ew5yIns" crossorigin="anonymous">
+
 </head>
 
-<body>
-    <!-- ============================================
-         TOP DIRECTION BAR
-         ============================================ -->
-    <div class="ar-top-bar" id="arTopBar">
-        <div class="direction-card">
-            <div class="direction-icon">
-                <i class="fas fa-location-arrow"></i>
-            </div>
-            <div class="direction-info">
-                <span class="direction-label">Hedef Yön</span>
-                <span class="direction-value" id="directionValue">Kuzey</span>
-                <span class="direction-angle" id="directionAngle">0°</span>
-            </div>
-        </div>
+<body style='margin: 0; overflow: hidden;'>
+
+    <div class="arrow left" id="left-arrow">
+        <img src="assets/left_arrow.png" alt="Left Arrow" class="arrow-icon left-arrow">
+    </div>
+    <div class="arrow right" id="right-arrow">
+        <img src="assets/right_arrow.png" alt="Right Arrow" class="arrow-icon right-arrow">
+    </div>
+    <div class="arrow up" id="up-arrow">
+        <img src="assets/ileri.png" alt="Up Arrow" class="arrow-icon up-arrow">
+    </div>
+    <div class="arrow up-perspective" id="up-arrow-perspective">
+        <img src="assets/arrow-up.png" alt="Up Arrow Perspective" class="arrow-icon up-arrow-perspective">
+    </div>
+    
+    <div class="container">
+        <svg class="progress-circle" width="200" height="200" viewBox="0 0 100 100" id="circle-svg">
+            <!-- Dış çember (gri arkaplan) -->
+            <circle cx="50" cy="50" r="45" fill="none" stroke="lightgray" stroke-width="5" />
+
+            <!-- İç çember (beyaz, %90 transpara) -->
+            <circle class="progress" cx="50" cy="50" r="45" fill="white" fill-opacity="0.1" stroke="white"
+                stroke-width="5" stroke-dasharray="283" stroke-dashoffset="283" />
+        </svg>
     </div>
 
-    <!-- ============================================
-         COMPASS INDICATOR
-         ============================================ -->
-    <div class="ar-compass" id="arCompass">
-        <div class="ar-compass-needle" id="compassNeedle"></div>
-    </div>
 
-    <!-- ============================================
-         NAVIGATION ARROWS (SVG Based)
-         ============================================ -->
-    <div class="ar-arrows-container" id="arrowsContainer">
-        <!-- Left Arrow -->
-        <div class="ar-arrow ar-arrow-left" id="arrowLeft">
-            <svg class="arrow-svg" viewBox="0 0 100 100">
-                <defs>
-                    <linearGradient id="arrowGradientLeft" x1="0%" y1="0%" x2="100%" y2="0%">
-                        <stop offset="0%" style="stop-color:#00D4FF;stop-opacity:1" />
-                        <stop offset="100%" style="stop-color:#7B2FFF;stop-opacity:1" />
-                    </linearGradient>
-                    <filter id="glowLeft" x="-50%" y="-50%" width="200%" height="200%">
-                        <feGaussianBlur stdDeviation="4" result="coloredBlur"/>
-                        <feMerge>
-                            <feMergeNode in="coloredBlur"/>
-                            <feMergeNode in="SourceGraphic"/>
-                        </feMerge>
-                    </filter>
-                </defs>
-                <path class="arrow-path" fill="url(#arrowGradientLeft)" filter="url(#glowLeft)"
-                    d="M70 20 L30 50 L70 80 L70 60 L85 60 L85 40 L70 40 Z"/>
-            </svg>
-        </div>
+    <div class="bottom-container">
 
-        <!-- Right Arrow -->
-        <div class="ar-arrow ar-arrow-right" id="arrowRight">
-            <svg class="arrow-svg" viewBox="0 0 100 100">
-                <defs>
-                    <linearGradient id="arrowGradientRight" x1="0%" y1="0%" x2="100%" y2="0%">
-                        <stop offset="0%" style="stop-color:#7B2FFF;stop-opacity:1" />
-                        <stop offset="100%" style="stop-color:#00D4FF;stop-opacity:1" />
-                    </linearGradient>
-                    <filter id="glowRight" x="-50%" y="-50%" width="200%" height="200%">
-                        <feGaussianBlur stdDeviation="4" result="coloredBlur"/>
-                        <feMerge>
-                            <feMergeNode in="coloredBlur"/>
-                            <feMergeNode in="SourceGraphic"/>
-                        </feMerge>
-                    </filter>
-                </defs>
-                <path class="arrow-path" fill="url(#arrowGradientRight)" filter="url(#glowRight)"
-                    d="M30 20 L70 50 L30 80 L30 60 L15 60 L15 40 L30 40 Z"/>
-            </svg>
-        </div>
-
-        <!-- Forward Arrow -->
-        <div class="ar-arrow ar-arrow-forward" id="arrowForward">
-            <svg class="arrow-svg-large" viewBox="0 0 100 100">
-                <defs>
-                    <linearGradient id="arrowGradientForward" x1="0%" y1="100%" x2="0%" y2="0%">
-                        <stop offset="0%" style="stop-color:#00FF88;stop-opacity:1" />
-                        <stop offset="100%" style="stop-color:#00D4FF;stop-opacity:1" />
-                    </linearGradient>
-                    <filter id="glowForward" x="-50%" y="-50%" width="200%" height="200%">
-                        <feGaussianBlur stdDeviation="6" result="coloredBlur"/>
-                        <feMerge>
-                            <feMergeNode in="coloredBlur"/>
-                            <feMergeNode in="SourceGraphic"/>
-                        </feMerge>
-                    </filter>
-                </defs>
-                <path class="arrow-path-success" fill="url(#arrowGradientForward)" filter="url(#glowForward)"
-                    d="M50 10 L80 50 L60 50 L60 90 L40 90 L40 50 L20 50 Z"/>
-            </svg>
-        </div>
-    </div>
-
-    <!-- ============================================
-         PROGRESS RING
-         ============================================ -->
-    <div class="ar-progress-container" id="progressContainer">
-        <div class="progress-ring">
-            <svg viewBox="0 0 180 180">
-                <defs>
-                    <linearGradient id="progressGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-                        <stop offset="0%" style="stop-color:#00FF88"/>
-                        <stop offset="100%" style="stop-color:#00D4FF"/>
-                    </linearGradient>
-                </defs>
-                <circle class="progress-ring-bg" cx="90" cy="90" r="80"/>
-                <circle class="progress-ring-fill" id="progressRing" cx="90" cy="90" r="80"/>
-            </svg>
-            <div class="progress-center">
-                <div class="progress-icon">✓</div>
-                <div class="progress-text">Doğru Yön</div>
-            </div>
-        </div>
-    </div>
-
-    <!-- ============================================
-         BOTTOM PANEL
-         ============================================ -->
-    <div class="ar-bottom-panel map-mode" id="bottomPanel">
-        <!-- Map Container -->
-        <div class="ar-map-container" id="mapContainer">
+        <!-- Map Section -->
+        <div class="map-section" id="mapSection">
             <div id="svgContainer" style="width: 100%; height: 100%; overflow: hidden; position: relative;">
                 <div id="svgWrapper" style="transform-origin: 0 0; cursor: grab;">
                     <!-- SVG buraya yüklenecek -->
                 </div>
             </div>
         </div>
-
-        <!-- Action Buttons -->
-        <div class="ar-action-bar" id="actionBar">
-            <button class="ar-btn ar-btn-primary" id="btnStartAR">
-                <svg class="ar-btn-icon" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
-                </svg>
-                AR Navigasyonu Başlat
+        <div class="button-section">
+            <button class="center-button">
+                <img src="assets/cube_white.png" alt="Cube Icon" /> <!-- Resim burada kullanılıyor -->
+                View In AR
             </button>
-            <button class="ar-btn ar-btn-danger hidden" id="btnStopAR">
-                <i class="fas fa-stop"></i>
-                Durdur
-            </button>
+            <button class="right-button">Stop</button>
         </div>
 
-        <!-- Info Bar -->
-        <div class="ar-info-bar">
-            <div class="ar-destination">
-                <div class="ar-destination-icon">
-                    <i class="fas fa-flag-checkered"></i>
-                </div>
-                <div class="ar-destination-info">
-                    <h3 id="destinationName">Hedef</h3>
-                    <p>
-                        <i class="fas fa-route"></i>
-                        <span id="directionText">Yükleniyor...</span>
-                    </p>
+        <!-- Info Section -->
+        <div class="info-section">
+            <div class="destination">
+                <a class="image-button">
+                    <img src="https://i.ibb.co/PjjtDkp/inmapper-1.png" alt="Icon" />
+                </a>
+                <div class="destination-details">
+                    <div class="destination-name" id="destinationName">Hedef Yön</div>
+                    <div class="time-info">
+                        <i class="fa-solid fa-person-running"></i> <span id="directionText">Yükleniyor...</span>
+                    </div>
                 </div>
             </div>
-            <div class="ar-quick-actions">
-                <button class="ar-icon-btn" title="Yardım">
-                    <i class="fas fa-question"></i>
-                </button>
-                <button class="ar-icon-btn" id="btnClose" title="Kapat">
-                    <i class="fas fa-times"></i>
-                </button>
+            <div class="icon-buttons-container">
+                <a class="circular-icon-button">
+                    <i class="fa-solid fa-question"></i>
+                </a>
+                <a class="circular-icon-button">
+                    <i class="fa-solid fa-xmark"></i>
+                </a>
             </div>
         </div>
     </div>
 
-    <!-- ============================================
-         SUCCESS POPUP
-         ============================================ -->
-    <div class="ar-success-popup" id="successPopup">
-        <div class="ar-success-content">
-            <div class="ar-success-icon">
-                <i class="fas fa-check"></i>
+    <div class="popup" id="popup">
+        <div class="popup-content">
+            <a href="https://imgbb.com/">
+                <img src="assets/location.gif" alt="location" class="popup-image">
+            </a>
+            <div class="popup-message">Harita Ekranına Dönmek İçin Tamam Butonuna Basabilir Veya Tekrar Butonuna Basarak
+                Hedef Noktanızı Tekrar Görebilirsiniz</div><br>
+
+            <div class="popup-button-container">
+                <button class="btn-ok" onclick="">
+                    <i class="fas fa-check"></i>
+                    <span>Tamam</span>
+                </button>
+
             </div>
-            <h2>Harika!</h2>
-            <p>Doğru yöne bakıyorsunuz. Şimdi bu yönde ilerlemeye devam edin.</p>
-            <button class="ar-success-btn" id="btnOk">
-                <i class="fas fa-map"></i>
-                Haritaya Dön
-            </button>
         </div>
     </div>
 
@@ -232,11 +133,8 @@
         console.log('Başlangıç:', targetParams.startX, targetParams.startY);
         console.log('Yön vektörü:', targetParams.dirX, targetParams.dirY);
         
-        // UI güncelle - Modern
+        // UI güncelle
         document.getElementById('directionText').textContent = targetParams.compass + ' yönüne dönün';
-        document.getElementById('directionValue').textContent = targetParams.compass;
-        document.getElementById('directionAngle').textContent = Math.round(targetParams.angle) + '°';
-        document.getElementById('destinationName').textContent = targetParams.endRoom || 'Hedef';
         
         // ==================== SVG HARİTA YÖNETİMİ ====================
         let svgElement = null;
@@ -673,82 +571,54 @@
         
         let directionMatches = false;
         let isLoading = false;
-        let activeAScene = null;
-        let compassListeners = { absolute: null, webkit: null };
-        let currentCompassAngle = 0;
+        let activeAScene = null; // AR scene referansı
+        let compassListeners = { absolute: null, webkit: null }; // Listener referansları
 
         document.addEventListener('DOMContentLoaded', function () {
-            // Modern UI Elements
-            const btnStartAR = document.getElementById('btnStartAR');
-            const btnStopAR = document.getElementById('btnStopAR');
-            const btnOk = document.getElementById('btnOk');
-            const btnClose = document.getElementById('btnClose');
-            const bottomPanel = document.getElementById('bottomPanel');
-            const arTopBar = document.getElementById('arTopBar');
-            const arCompass = document.getElementById('arCompass');
-            const successPopup = document.getElementById('successPopup');
+            const centerButton = document.querySelector('.center-button');
+            const rightButton = document.querySelector('.right-button');
+            const okButton = document.querySelector('.btn-ok');
+            const bottomContainer = document.querySelector('.bottom-container');
+            const popup = document.getElementById('popup');
 
-            // Start AR
-            btnStartAR.addEventListener('click', function () {
-                startARMode();
+            centerButton.addEventListener('click', function () {
+                activeAScene = document.createElement('a-scene');
+                activeAScene.setAttribute('vr-mode-ui', 'enabled: false');
+                activeAScene.style.position = 'absolute';
+                activeAScene.style.top = '0';
+                activeAScene.style.left = '0';
+                activeAScene.style.width = '100%';
+                activeAScene.style.height = '100%';
+                activeAScene.style.zIndex = '1';
+                document.body.appendChild(activeAScene);
+                bottomContainer.style.height = '40%';
+                centerButton.style.display = 'none';
+                rightButton.style.display = 'block';
+                
+                // Pusula dinlemeyi başlat
+                startCompassListener((compass, beta) => {
+                    showArrow(directionToTurn, compass, beta);
+                });
             });
 
-            // Stop AR
-            btnStopAR.addEventListener('click', function () {
-                stopARMode();
+            rightButton.addEventListener('click', function () {
+                stopARAndCleanup();
+                bottomContainer.style.height = '100%';
+                centerButton.style.display = 'none';
+                rightButton.style.display = 'none';
             });
 
-            // OK Button (Success Popup)
-            btnOk.addEventListener('click', function () {
-                stopARMode();
-            });
-
-            // Close Button
-            btnClose.addEventListener('click', function () {
-                window.history.back();
+            okButton.addEventListener('click', function () {
+                stopARAndCleanup();
+                bottomContainer.style.height = '100%';
+                centerButton.style.display = 'none';
+                rightButton.style.display = 'none';
             });
         });
-
-        function startARMode() {
-            const bottomPanel = document.getElementById('bottomPanel');
-            const btnStartAR = document.getElementById('btnStartAR');
-            const btnStopAR = document.getElementById('btnStopAR');
-            const arTopBar = document.getElementById('arTopBar');
-            const arCompass = document.getElementById('arCompass');
-
-            // Create A-Scene
-            activeAScene = document.createElement('a-scene');
-            activeAScene.setAttribute('vr-mode-ui', 'enabled: false');
-            activeAScene.setAttribute('embedded', '');
-            activeAScene.style.cssText = 'position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1;';
-            document.body.insertBefore(activeAScene, document.body.firstChild);
-
-            // UI Updates
-            bottomPanel.classList.remove('map-mode');
-            bottomPanel.classList.add('ar-mode');
-            btnStartAR.classList.add('hidden');
-            btnStopAR.classList.remove('hidden');
-            arTopBar.classList.add('visible');
-            arCompass.classList.add('visible');
-
-            // Start compass listening
-            startCompassListener((compass, beta) => {
-                currentCompassAngle = compass;
-                updateCompassNeedle(compass);
-                showArrow(directionToTurn, compass, beta);
-            });
-        }
-
-        function stopARMode() {
-            const bottomPanel = document.getElementById('bottomPanel');
-            const btnStartAR = document.getElementById('btnStartAR');
-            const btnStopAR = document.getElementById('btnStopAR');
-            const arTopBar = document.getElementById('arTopBar');
-            const arCompass = document.getElementById('arCompass');
-            const successPopup = document.getElementById('successPopup');
-            const progressContainer = document.getElementById('progressContainer');
-
-            // Stop compass listeners
+        
+        // AR ve kamerayı temizle
+        function stopARAndCleanup() {
+            // DeviceOrientation listener'larını kaldır
             if (compassListeners.absolute) {
                 window.removeEventListener("deviceorientationabsolute", compassListeners.absolute);
                 compassListeners.absolute = null;
@@ -757,134 +627,128 @@
                 window.removeEventListener("deviceorientation", compassListeners.webkit);
                 compassListeners.webkit = null;
             }
-
-            // Remove A-Scene
+            
+            // AR Scene'i kaldır (kamera da kapanır)
             if (activeAScene) {
                 activeAScene.remove();
                 activeAScene = null;
             }
-
-            // UI Updates
-            bottomPanel.classList.remove('ar-mode');
-            bottomPanel.classList.add('map-mode');
-            btnStartAR.classList.remove('hidden');
-            btnStopAR.classList.add('hidden');
-            arTopBar.classList.remove('visible');
-            arCompass.classList.remove('visible');
-            successPopup.classList.remove('visible');
-            progressContainer.classList.remove('active');
-
-            // Reset progress
-            const progressRing = document.getElementById('progressRing');
-            if (progressRing) {
-                progressRing.classList.remove('animating');
+            
+            // Popup'ı gizle
+            const popup = document.getElementById('popup');
+            if (popup) {
+                popup.style.display = 'none';
             }
-
-            // Hide all arrows
-            hideAllArrows();
-
-            console.log('AR mode stopped');
-        }
-
-        function updateCompassNeedle(angle) {
-            const needle = document.getElementById('compassNeedle');
-            if (needle) {
-                needle.style.transform = `rotate(${angle}deg)`;
+            
+            // Progress'i sıfırla
+            const progressCircle = document.querySelector('.progress');
+            if (progressCircle) {
+                progressCircle.style.strokeDashoffset = '283';
             }
+            
+            // Container'ı küçült
+            const container = document.querySelector('.container');
+            if (container) {
+                container.classList.remove('grow');
+            }
+            
+            console.log('AR ve kamera temizlendi');
         }
 
-        function hideAllArrows() {
-            document.getElementById('arrowLeft').classList.remove('visible');
-            document.getElementById('arrowRight').classList.remove('visible');
-            document.getElementById('arrowForward').classList.remove('visible');
-        }
-
-        // Modern Arrow Display Function
+        // Yönlendirme oklarını ve doğru yön indikatörünü gösterir
         function showArrow(directionToTurn, direction, beta) {
             const arScene = document.querySelector('a-scene');
-            if (!arScene) return;
+            if (!arScene) {
+                return;
+            }
+            const leftArrow = document.getElementById('left-arrow');
+            const rightArrow = document.getElementById('right-arrow');
+            const upArrow = document.getElementById('up-arrow');
+            const upPerspectiveArrow = document.getElementById('up-arrow-perspective');
+            const popup = document.querySelector('.popup');
+            const container = document.querySelector('.container');
+            const progressCircle = document.querySelector('.progress');
 
-            const arrowLeft = document.getElementById('arrowLeft');
-            const arrowRight = document.getElementById('arrowRight');
-            const arrowForward = document.getElementById('arrowForward');
-            const progressContainer = document.getElementById('progressContainer');
-            const progressRing = document.getElementById('progressRing');
-            const successPopup = document.getElementById('successPopup');
+            // Okların görünürlüğünü sıfırlama
+            leftArrow.classList.remove('fade-in', 'fade-out');
+            rightArrow.classList.remove('fade-in', 'fade-out');
+            upArrow.classList.remove('fade-in', 'fade-out');
+            upPerspectiveArrow.classList.remove('fade-in', 'fade-out');
 
             const upperBound = (directionToTurn + 20) % 360;
             const lowerBound = (directionToTurn - 20 + 360) % 360;
 
-            // Check if direction is correct (±20 degrees)
-            const isCorrectDirection = (direction <= upperBound && direction >= lowerBound) ||
-                (lowerBound > upperBound && (direction >= lowerBound || direction <= upperBound));
+            // Eğer yön directionToTurn ile ±20 derece arasındaysa
+            if ((direction <= upperBound && direction >= lowerBound) ||
+                (lowerBound > upperBound && (direction >= lowerBound || direction <= upperBound))) {
 
-            if (isCorrectDirection) {
-                // Correct direction - show forward arrow and progress
-                arrowLeft.classList.remove('visible');
-                arrowRight.classList.remove('visible');
-                arrowForward.classList.add('visible');
-                progressContainer.classList.add('active');
-                
-                if (!directionMatches) {
-                    // Start progress animation
-                    progressRing.classList.add('animating');
-                    directionMatches = true;
-
-                    // Monitor animation completion
-                    const checkCompletion = () => {
-                        const computedStyle = getComputedStyle(progressRing);
-                        const offset = parseFloat(computedStyle.strokeDashoffset);
-
-                        if (offset <= 1) {
-                            console.log('Navigation complete!');
-                            
-                            // Show success popup
-                            successPopup.classList.add('visible');
-                            
-                            // Stop compass listeners
-                            if (compassListeners.absolute) {
-                                window.removeEventListener("deviceorientationabsolute", compassListeners.absolute);
-                                compassListeners.absolute = null;
-                            }
-                            if (compassListeners.webkit) {
-                                window.removeEventListener("deviceorientation", compassListeners.webkit);
-                                compassListeners.webkit = null;
-                            }
-
-                            // Hide arrows
-                            hideAllArrows();
-                        } else if (directionMatches) {
-                            requestAnimationFrame(checkCompletion);
-                        }
-                    };
-
-                    requestAnimationFrame(checkCompletion);
+                // Yön doğru, okları kontrol et
+                if (beta < 30) {
+                    upPerspectiveArrow.classList.add('fade-in');
+                    upArrow.classList.remove('fade-in');
+                } else {
+                    upArrow.classList.add('fade-in');
+                    upPerspectiveArrow.classList.remove('fade-in');
                 }
+                leftArrow.classList.add('fade-out');
+                rightArrow.classList.add('fade-out');
+                directionMatches = true;
+                container.classList.add('grow');
+                isLoading = true;
+                progressCircle.style.strokeDashoffset = '0';
+
+                const monitorAnimation = () => {
+                    const currentOffset = parseFloat(getComputedStyle(progressCircle).strokeDashoffset);
+
+                    if (currentOffset === 0) {
+                        console.log('Animasyon tamamlandı!');
+                        popup.style.display = 'block';
+                        
+                        // AR kamerasını durdur (listener'ları kaldır ama scene'i tutarak popup arkasında görünsün)
+                        if (compassListeners.absolute) {
+                            window.removeEventListener("deviceorientationabsolute", compassListeners.absolute);
+                            compassListeners.absolute = null;
+                        }
+                        if (compassListeners.webkit) {
+                            window.removeEventListener("deviceorientation", compassListeners.webkit);
+                            compassListeners.webkit = null;
+                        }
+                        
+                        // Okları gizle
+                        const leftArrow = document.getElementById('left-arrow');
+                        const rightArrow = document.getElementById('right-arrow');
+                        const upArrow = document.getElementById('up-arrow');
+                        const upPerspectiveArrow = document.getElementById('up-arrow-perspective');
+                        if (leftArrow) leftArrow.classList.remove('fade-in');
+                        if (rightArrow) rightArrow.classList.remove('fade-in');
+                        if (upArrow) upArrow.classList.remove('fade-in');
+                        if (upPerspectiveArrow) upPerspectiveArrow.classList.remove('fade-in');
+                    } else {
+                        requestAnimationFrame(monitorAnimation);
+                    }
+                };
+
+                requestAnimationFrame(monitorAnimation);
 
             } else {
-                // Wrong direction - show turn arrows
-                arrowForward.classList.remove('visible');
-                progressContainer.classList.remove('active');
-                
-                // Reset progress if direction changed
-                if (directionMatches) {
-                    progressRing.classList.remove('animating');
-                    directionMatches = false;
-                }
-
-                // Calculate shortest turn direction
+                // Sola veya sağa dönüş gerekli
                 const clockwise = (directionToTurn - direction + 360) % 360;
                 const counterclockwise = (direction - directionToTurn + 360) % 360;
 
                 if (clockwise <= counterclockwise) {
-                    // Turn right
-                    arrowLeft.classList.remove('visible');
-                    arrowRight.classList.add('visible');
+                    leftArrow.classList.add('fade-out');
+                    upArrow.classList.remove('fade-in');
+                    upPerspectiveArrow.classList.remove('fade-in');
+                    rightArrow.classList.add('fade-in');
                 } else {
-                    // Turn left
-                    arrowRight.classList.remove('visible');
-                    arrowLeft.classList.add('visible');
+                    leftArrow.classList.add('fade-in');
+                    upArrow.classList.remove('fade-in');
+                    upPerspectiveArrow.classList.remove('fade-in');
+                    rightArrow.classList.add('fade-out');
                 }
+                directionMatches = false;
+                container.classList.remove('grow');
+                progressCircle.style.strokeDashoffset = '283';
             }
         }
 

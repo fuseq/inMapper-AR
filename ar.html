@@ -14,6 +14,7 @@
     </script>
     <script src="https://unpkg.com/@joeyklee/compass.js@latest/dist/compass.js"></script>
     <script src="https://kit.fontawesome.com/a076d05399.js"></script>
+    <script src="./map-direction.js"></script>
     <link rel="stylesheet" type="text/css" href="./style.css" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     <link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.4.2/css/all.css"
@@ -51,9 +52,12 @@
     <div class="bottom-container">
 
         <!-- Map Section -->
-        <div class="map-section">
-            <iframe src="https://cbaines.github.io/leaflet-indoor/examples/" frameborder="0"
-                class="map-iframe"></iframe>
+        <div class="map-section" id="mapSection">
+            <div id="svgContainer" style="width: 100%; height: 100%; overflow: hidden; position: relative;">
+                <div id="svgWrapper" style="transform-origin: 0 0; cursor: grab;">
+                    <!-- SVG buraya yüklenecek -->
+                </div>
+            </div>
         </div>
         <div class="button-section">
             <button class="center-button">
@@ -106,12 +110,18 @@
     </div>
 
     <script>
-        // URL'den hedef açıyı al
+        // URL'den parametreleri al
         function getQueryParams() {
             const params = new URLSearchParams(window.location.search);
             return {
                 angle: parseFloat(params.get('angle')) || 0,
-                compass: params.get('compass') || 'Kuzey'
+                compass: params.get('compass') || 'Kuzey',
+                startX: parseFloat(params.get('startX')) || 0,
+                startY: parseFloat(params.get('startY')) || 0,
+                dirX: parseFloat(params.get('dirX')) || 0,
+                dirY: parseFloat(params.get('dirY')) || 1,
+                startRoom: params.get('startRoom') || '',
+                endRoom: params.get('endRoom') || ''
             };
         }
         
@@ -120,9 +130,444 @@
         
         console.log('Hedef açı:', directionToTurn);
         console.log('Hedef yön:', targetParams.compass);
+        console.log('Başlangıç:', targetParams.startX, targetParams.startY);
+        console.log('Yön vektörü:', targetParams.dirX, targetParams.dirY);
         
         // UI güncelle
         document.getElementById('directionText').textContent = targetParams.compass + ' yönüne dönün';
+        
+        // ==================== SVG HARİTA YÖNETİMİ ====================
+        let svgElement = null;
+        let scale = 1;
+        let panX = 0, panY = 0;
+        let isPanning = false;
+        let startPanX, startPanY;
+        
+        // SVG'yi yükle
+        async function loadSVG() {
+            try {
+                let response = await fetch('./sample.svg');
+                if (!response.ok) {
+                    response = await fetch('../sample.svg');
+                }
+                if (response.ok) {
+                    const content = await response.text();
+                    const parser = new DOMParser();
+                    const doc = parser.parseFromString(content, 'image/svg+xml');
+                    svgElement = doc.documentElement.cloneNode(true);
+                    
+                    // SVG boyutlarını ayarla
+                    svgElement.style.width = '100%';
+                    svgElement.style.height = '100%';
+                    svgElement.removeAttribute('width');
+                    svgElement.removeAttribute('height');
+                    
+                    // viewBox'ı transform sonrası gerçek içeriğe göre ayarla
+                    // Transform: translate(-155.17664,-527.47596)
+                    // Orijinal içerik: yaklaşık 0-800 x ve 527-1320 y
+                    // Transform sonrası: -155 ile 645 x ve 0 ile 793 y
+                    svgElement.setAttribute('viewBox', '-20 -20 700 850');
+                    
+                    // SVG'yi ekle
+                    const wrapper = document.getElementById('svgWrapper');
+                    wrapper.appendChild(svgElement);
+                    
+                    // Yön okunu çiz
+                    drawDirectionArrow();
+                    
+                    // Kullanılan path'leri highlight et
+                    highlightUsedPaths();
+                    
+                    // Başlangıç noktasına odaklan
+                    centerOnPoint(targetParams.startX, targetParams.startY);
+                    
+                    // Zoom/Pan olaylarını ekle
+                    setupZoomPan();
+                    
+                    console.log('SVG yüklendi');
+                }
+            } catch (e) {
+                console.error('SVG yüklenemedi:', e);
+            }
+        }
+        
+        // Kullanılan path'leri highlight et
+        async function highlightUsedPaths() {
+            if (!svgElement) return;
+            
+            const ns = 'http://www.w3.org/2000/svg';
+            
+            // MapDirection ile path'i tekrar hesapla
+            const mapDir = new MapDirection();
+            
+            // SVG içeriğini MapDirection'a yükle
+            const svgContent = new XMLSerializer().serializeToString(svgElement);
+            mapDir.loadSVG(svgContent);
+            
+            // Path'i bul
+            const startRoom = mapDir.rooms.find(r => r.id === targetParams.startRoom);
+            const endRoom = mapDir.rooms.find(r => r.id === targetParams.endRoom);
+            
+            if (!startRoom || !endRoom) {
+                console.log('Odalar bulunamadı:', targetParams.startRoom, targetParams.endRoom);
+                return;
+            }
+            
+            const startDoor = mapDir.findDoorForRoom(targetParams.startRoom);
+            const endDoor = mapDir.findDoorForRoom(targetParams.endRoom);
+            
+            const startPoint = startDoor ? startDoor.center : startRoom.center;
+            const endPoint = endDoor ? endDoor.center : endRoom.center;
+            
+            const pathResult = mapDir.findPathBetweenPoints(startPoint, endPoint);
+            
+            if (!pathResult || pathResult.length < 2) {
+                console.log('Path bulunamadı');
+                return;
+            }
+            
+            console.log('Highlight edilecek path noktaları:', pathResult.length);
+            
+            // SVG'deki Paths grubunu bul ve görünür yap
+            const pathsGroup = svgElement.querySelector('g[id="Paths"]') || 
+                               svgElement.querySelector('g[inkscape\\:label="Paths"]');
+            
+            if (pathsGroup) {
+                pathsGroup.style.display = 'block';
+                pathsGroup.style.visibility = 'visible';
+                pathsGroup.style.opacity = '0.3';
+            }
+            
+            // Transform'u al
+            const roomsGroup = svgElement.querySelector('g[id="Rooms"]') || 
+                               svgElement.querySelector('g[inkscape\\:label="Rooms"]');
+            let groupTransform = '';
+            if (roomsGroup) {
+                groupTransform = roomsGroup.getAttribute('transform') || '';
+            }
+            
+            // Highlight grubu oluştur
+            const highlightGroup = document.createElementNS(ns, 'g');
+            highlightGroup.setAttribute('id', 'path-highlight-group');
+            if (groupTransform) {
+                highlightGroup.setAttribute('transform', groupTransform);
+            }
+            
+            // Tüm path'i mavi çizgi olarak çiz
+            for (let i = 0; i < pathResult.length - 1; i++) {
+                const p1 = pathResult[i];
+                const p2 = pathResult[i + 1];
+                
+                const line = document.createElementNS(ns, 'line');
+                line.setAttribute('x1', p1[0]);
+                line.setAttribute('y1', p1[1]);
+                line.setAttribute('x2', p2[0]);
+                line.setAttribute('y2', p2[1]);
+                line.setAttribute('stroke', '#0066ff');
+                line.setAttribute('stroke-width', '4');
+                line.setAttribute('stroke-linecap', 'round');
+                line.setAttribute('opacity', '0.7');
+                highlightGroup.appendChild(line);
+            }
+            
+            // İlk 5 segmenti (yön hesaplamasında kullanılanları) sarı ile vurgula
+            const pathWithDoor = [startPoint, ...pathResult];
+            for (let i = 0; i < Math.min(5, pathWithDoor.length - 1); i++) {
+                const p1 = pathWithDoor[i];
+                const p2 = pathWithDoor[i + 1];
+                
+                const line = document.createElementNS(ns, 'line');
+                line.setAttribute('x1', p1[0]);
+                line.setAttribute('y1', p1[1]);
+                line.setAttribute('x2', p2[0]);
+                line.setAttribute('y2', p2[1]);
+                line.setAttribute('stroke', '#ffff00');
+                line.setAttribute('stroke-width', '6');
+                line.setAttribute('stroke-linecap', 'round');
+                highlightGroup.appendChild(line);
+                
+                // Segment numarası
+                const midX = (p1[0] + p2[0]) / 2;
+                const midY = (p1[1] + p2[1]) / 2;
+                const text = document.createElementNS(ns, 'text');
+                text.setAttribute('x', midX);
+                text.setAttribute('y', midY - 5);
+                text.setAttribute('fill', '#ff0000');
+                text.setAttribute('font-size', '12');
+                text.setAttribute('font-weight', 'bold');
+                text.textContent = `S${i + 1}`;
+                highlightGroup.appendChild(text);
+            }
+            
+            // Path noktalarını daire ile işaretle (ilk 6 nokta = 5 segment)
+            pathWithDoor.slice(0, 6).forEach((p, idx) => {
+                const circle = document.createElementNS(ns, 'circle');
+                circle.setAttribute('cx', p[0]);
+                circle.setAttribute('cy', p[1]);
+                circle.setAttribute('r', idx === 0 ? '8' : '5');
+                circle.setAttribute('fill', idx === 0 ? '#ff0000' : '#ffff00');
+                circle.setAttribute('stroke', '#000');
+                circle.setAttribute('stroke-width', '1');
+                highlightGroup.appendChild(circle);
+            });
+            
+            svgElement.appendChild(highlightGroup);
+            console.log('Path highlight edildi');
+        }
+        
+        // Yön okunu çiz
+        function drawDirectionArrow() {
+            if (!svgElement) {
+                console.error('SVG element bulunamadı');
+                return;
+            }
+            
+            const ns = 'http://www.w3.org/2000/svg';
+            
+            // Eski oku sil
+            const oldArrow = svgElement.querySelector('#direction-arrow-group');
+            if (oldArrow) oldArrow.remove();
+            
+            // SVG'deki grupların transform'unu al (Rooms veya Paths grubundan)
+            const roomsGroup = svgElement.querySelector('g[id="Rooms"]') || 
+                               svgElement.querySelector('g[inkscape\\:label="Rooms"]');
+            let groupTransform = '';
+            if (roomsGroup) {
+                groupTransform = roomsGroup.getAttribute('transform') || '';
+            }
+            
+            const group = document.createElementNS(ns, 'g');
+            group.setAttribute('id', 'direction-arrow-group');
+            // Aynı transform'u oka da uygula
+            if (groupTransform) {
+                group.setAttribute('transform', groupTransform);
+            }
+            
+            const startX = targetParams.startX;
+            const startY = targetParams.startY;
+            const arrowLength = 80;
+            const endX = startX + targetParams.dirX * arrowLength;
+            const endY = startY + targetParams.dirY * arrowLength;
+            
+            console.log('Ok çiziliyor:', startX, startY, '->', endX, endY);
+            console.log('Transform:', groupTransform);
+            
+            // Glow efekti için filtre
+            const defs = document.createElementNS(ns, 'defs');
+            const filter = document.createElementNS(ns, 'filter');
+            filter.setAttribute('id', 'glow');
+            filter.setAttribute('x', '-50%');
+            filter.setAttribute('y', '-50%');
+            filter.setAttribute('width', '200%');
+            filter.setAttribute('height', '200%');
+            
+            const feGaussianBlur = document.createElementNS(ns, 'feGaussianBlur');
+            feGaussianBlur.setAttribute('stdDeviation', '4');
+            feGaussianBlur.setAttribute('result', 'coloredBlur');
+            filter.appendChild(feGaussianBlur);
+            
+            const feMerge = document.createElementNS(ns, 'feMerge');
+            const feMergeNode1 = document.createElementNS(ns, 'feMergeNode');
+            feMergeNode1.setAttribute('in', 'coloredBlur');
+            const feMergeNode2 = document.createElementNS(ns, 'feMergeNode');
+            feMergeNode2.setAttribute('in', 'SourceGraphic');
+            feMerge.appendChild(feMergeNode1);
+            feMerge.appendChild(feMergeNode2);
+            filter.appendChild(feMerge);
+            defs.appendChild(filter);
+            group.appendChild(defs);
+            
+            // Ok çizgisi - kalın ve parlak
+            const line = document.createElementNS(ns, 'line');
+            line.setAttribute('x1', startX);
+            line.setAttribute('y1', startY);
+            line.setAttribute('x2', endX);
+            line.setAttribute('y2', endY);
+            line.setAttribute('stroke', '#00FF00');
+            line.setAttribute('stroke-width', '8');
+            line.setAttribute('stroke-linecap', 'round');
+            line.setAttribute('filter', 'url(#glow)');
+            group.appendChild(line);
+            
+            // Ok ucu (polygon) - daha büyük
+            const angle = Math.atan2(targetParams.dirY, targetParams.dirX);
+            const headLen = 25;
+            const headAngle = Math.PI / 5;
+            
+            const hx1 = endX - headLen * Math.cos(angle - headAngle);
+            const hy1 = endY - headLen * Math.sin(angle - headAngle);
+            const hx2 = endX - headLen * Math.cos(angle + headAngle);
+            const hy2 = endY - headLen * Math.sin(angle + headAngle);
+            
+            const head = document.createElementNS(ns, 'polygon');
+            head.setAttribute('points', `${endX},${endY} ${hx1},${hy1} ${hx2},${hy2}`);
+            head.setAttribute('fill', '#00FF00');
+            head.setAttribute('filter', 'url(#glow)');
+            group.appendChild(head);
+            
+            // Başlangıç noktası (daire) - daha büyük ve parlak
+            const circle = document.createElementNS(ns, 'circle');
+            circle.setAttribute('cx', startX);
+            circle.setAttribute('cy', startY);
+            circle.setAttribute('r', '15');
+            circle.setAttribute('fill', '#FF0000');
+            circle.setAttribute('stroke', '#FFFFFF');
+            circle.setAttribute('stroke-width', '4');
+            circle.setAttribute('filter', 'url(#glow)');
+            group.appendChild(circle);
+            
+            // İç daire (pulse animasyonu için)
+            const innerCircle = document.createElementNS(ns, 'circle');
+            innerCircle.setAttribute('cx', startX);
+            innerCircle.setAttribute('cy', startY);
+            innerCircle.setAttribute('r', '8');
+            innerCircle.setAttribute('fill', '#FFFFFF');
+            group.appendChild(innerCircle);
+            
+            svgElement.appendChild(group);
+            console.log('Ok eklendi');
+        }
+        
+        // Belirli noktaya odaklan
+        function centerOnPoint(x, y) {
+            const container = document.getElementById('svgContainer');
+            const wrapper = document.getElementById('svgWrapper');
+            
+            if (!svgElement) return;
+            
+            // Container boyutları
+            const containerWidth = container.clientWidth;
+            const containerHeight = container.clientHeight;
+            
+            // SVG boyutları (viewBox'tan bağımsız, render edilmiş boyut)
+            const svgRect = svgElement.getBoundingClientRect();
+            
+            // Transform: translate(-155.17664,-527.47596)
+            const translateX = -155.17664;
+            const translateY = -527.47596;
+            
+            // Transform sonrası koordinatlar
+            const transformedX = x + translateX;
+            const transformedY = y + translateY;
+            
+            // Tüm haritayı gösterecek başlangıç scale
+            scale = 0.8;
+            
+            // viewBox: -20 -20 700 850 kullanarak
+            const vbX = -20, vbY = -20, vbWidth = 700, vbHeight = 850;
+            
+            // SVG koordinatlarını wrapper koordinatlarına çevir
+            const svgScale = Math.min(svgRect.width / vbWidth, svgRect.height / vbHeight);
+            const pointX = (transformedX - vbX) * svgScale * scale;
+            const pointY = (transformedY - vbY) * svgScale * scale;
+            
+            // Merkeze al
+            panX = containerWidth / 2 - pointX;
+            panY = containerHeight / 2 - pointY;
+            
+            console.log(`centerOnPoint: (${x}, ${y}) -> transform(${transformedX.toFixed(2)}, ${transformedY.toFixed(2)})`);
+            
+            updateTransform();
+        }
+        
+        // Transform güncelle
+        function updateTransform() {
+            const wrapper = document.getElementById('svgWrapper');
+            wrapper.style.transform = `translate(${panX}px, ${panY}px) scale(${scale})`;
+        }
+        
+        // Zoom/Pan kurulumu
+        function setupZoomPan() {
+            const container = document.getElementById('svgContainer');
+            
+            // Mouse wheel zoom
+            container.addEventListener('wheel', (e) => {
+                e.preventDefault();
+                const delta = e.deltaY > 0 ? 0.9 : 1.1;
+                const rect = container.getBoundingClientRect();
+                const mouseX = e.clientX - rect.left;
+                const mouseY = e.clientY - rect.top;
+                
+                // Zoom merkezi mouse pozisyonu
+                const newScale = scale * delta;
+                if (newScale < 0.1 || newScale > 10) return;
+                
+                panX = mouseX - (mouseX - panX) * delta;
+                panY = mouseY - (mouseY - panY) * delta;
+                scale = newScale;
+                
+                updateTransform();
+            });
+            
+            // Pan (sürükleme)
+            container.addEventListener('mousedown', (e) => {
+                isPanning = true;
+                startPanX = e.clientX - panX;
+                startPanY = e.clientY - panY;
+                container.style.cursor = 'grabbing';
+            });
+            
+            container.addEventListener('mousemove', (e) => {
+                if (!isPanning) return;
+                panX = e.clientX - startPanX;
+                panY = e.clientY - startPanY;
+                updateTransform();
+            });
+            
+            container.addEventListener('mouseup', () => {
+                isPanning = false;
+                container.style.cursor = 'grab';
+            });
+            
+            container.addEventListener('mouseleave', () => {
+                isPanning = false;
+                container.style.cursor = 'grab';
+            });
+            
+            // Touch desteği
+            let lastTouchDist = 0;
+            let lastTouchX = 0, lastTouchY = 0;
+            
+            container.addEventListener('touchstart', (e) => {
+                if (e.touches.length === 1) {
+                    isPanning = true;
+                    startPanX = e.touches[0].clientX - panX;
+                    startPanY = e.touches[0].clientY - panY;
+                } else if (e.touches.length === 2) {
+                    lastTouchDist = Math.hypot(
+                        e.touches[0].clientX - e.touches[1].clientX,
+                        e.touches[0].clientY - e.touches[1].clientY
+                    );
+                }
+            });
+            
+            container.addEventListener('touchmove', (e) => {
+                e.preventDefault();
+                if (e.touches.length === 1 && isPanning) {
+                    panX = e.touches[0].clientX - startPanX;
+                    panY = e.touches[0].clientY - startPanY;
+                    updateTransform();
+                } else if (e.touches.length === 2) {
+                    const dist = Math.hypot(
+                        e.touches[0].clientX - e.touches[1].clientX,
+                        e.touches[0].clientY - e.touches[1].clientY
+                    );
+                    const delta = dist / lastTouchDist;
+                    scale *= delta;
+                    if (scale < 0.1) scale = 0.1;
+                    if (scale > 10) scale = 10;
+                    lastTouchDist = dist;
+                    updateTransform();
+                }
+            });
+            
+            container.addEventListener('touchend', () => {
+                isPanning = false;
+            });
+        }
+        
+        // Sayfa yüklendiğinde SVG'yi yükle
+        document.addEventListener('DOMContentLoaded', loadSVG);
         
         let directionMatches = false;
         let isLoading = false;

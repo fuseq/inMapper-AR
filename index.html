@@ -80,8 +80,18 @@
                 
                 console.log('Hesaplanan yön:', direction);
                 
-                // AR sayfasına yönlendir - sadece açı bilgisi
-                window.location.href = `ar.html?angle=${direction.compassAngle}&compass=${encodeURIComponent(direction.compass)}`;
+                // AR sayfasına yönlendir - açı ve koordinat bilgileri
+                const params = new URLSearchParams({
+                    angle: direction.compassAngle,
+                    compass: direction.compass,
+                    startX: direction.startPoint[0],
+                    startY: direction.startPoint[1],
+                    dirX: direction.directionVector[0],
+                    dirY: direction.directionVector[1],
+                    startRoom: startId,
+                    endRoom: endId
+                });
+                window.location.href = `ar.html?${params.toString()}`;
             });
         });
         

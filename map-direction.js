@@ -261,16 +261,25 @@ class MapDirection {
         const startDoor = this.findDoorForRoom(startRoomId);
         const endDoor = this.findDoorForRoom(endRoomId);
 
-        // Başlangıç ve hedef noktaları
+        // Başlangıç ve hedef noktaları (kapı varsa kapı, yoksa oda merkezi)
         const startPoint = startDoor ? startDoor.center : startRoom.center;
         const endPoint = endDoor ? endDoor.center : endRoom.center;
+
+        console.log('Başlangıç kapı/oda koordinatı:', startPoint);
+        console.log('Hedef kapı/oda koordinatı:', endPoint);
 
         // Path'ler üzerinden rota bul
         const pathResult = this.findPathBetweenPoints(startPoint, endPoint);
         
         if (pathResult && pathResult.length >= 2) {
+            // ÖNEMLİ: Kapının koordinatını path'in başına ekle
+            // Böylece ilk segment kapıdan path'e doğru olan yönü gösterir
+            const pathWithDoor = [startPoint, ...pathResult];
+            
+            console.log('Kapı + Path ilk 5 nokta:', pathWithDoor.slice(0, 5).map(p => `(${p[0].toFixed(1)}, ${p[1].toFixed(1)})`));
+            
             // İlk 5 segment üzerinden yön hesapla
-            return this.calculateDirectionFromPath(pathResult, 5);
+            return this.calculateDirectionFromPath(pathWithDoor, 5);
         }
 
         // Fallback: Direkt yön
@@ -376,14 +385,17 @@ class MapDirection {
 
         // Graph oluştur
         const graph = new Map();
-        const coordToId = new Map();
+        const idToCoord = new Map(); // Node ID -> koordinat
+        const coordToId = new Map(); // koordinat string -> Node ID
         let nodeId = 0;
 
         const getNodeId = (x, y) => {
             const key = `${x.toFixed(2)},${y.toFixed(2)}`;
             if (!coordToId.has(key)) {
-                coordToId.set(key, nodeId++);
-                graph.set(coordToId.get(key), []);
+                const id = nodeId++;
+                coordToId.set(key, id);
+                idToCoord.set(id, [x, y]);
+                graph.set(id, []);
             }
             return coordToId.get(key);
         };
@@ -394,24 +406,22 @@ class MapDirection {
             const id2 = getNodeId(path.x2, path.y2);
             const dist = Math.sqrt(Math.pow(path.x2 - path.x1, 2) + Math.pow(path.y2 - path.y1, 2));
 
-            graph.get(id1).push({ node: id2, dist, coords: [path.x2, path.y2] });
-            graph.get(id2).push({ node: id1, dist, coords: [path.x1, path.y1] });
+            graph.get(id1).push({ node: id2, dist });
+            graph.get(id2).push({ node: id1, dist });
         });
 
         // En yakın başlangıç ve hedef node'ları bul
         let startNodeId = null, endNodeId = null;
         let minStartDist = Infinity, minEndDist = Infinity;
 
-        for (const [key, id] of coordToId) {
-            const [x, y] = key.split(',').map(parseFloat);
-            
-            const startDist = this.distance(startPoint, [x, y]);
+        for (const [id, coord] of idToCoord) {
+            const startDist = this.distance(startPoint, coord);
             if (startDist < minStartDist) {
                 minStartDist = startDist;
                 startNodeId = id;
             }
 
-            const endDist = this.distance(endPoint, [x, y]);
+            const endDist = this.distance(endPoint, coord);
             if (endDist < minEndDist) {
                 minEndDist = endDist;
                 endNodeId = id;
@@ -449,30 +459,28 @@ class MapDirection {
                 const alt = distances.get(current) + neighbor.dist;
                 if (alt < distances.get(neighbor.node)) {
                     distances.set(neighbor.node, alt);
-                    previous.set(neighbor.node, { node: current, coords: neighbor.coords });
+                    previous.set(neighbor.node, current); // Sadece önceki node ID'sini sakla
                 }
             }
         }
 
-        // Path'i reconstruct et
-        const pathCoords = [];
+        // Path'i reconstruct et (başlangıçtan hedefe doğru)
+        const pathNodeIds = [];
         let current = endNodeId;
 
-        while (previous.has(current)) {
-            const prev = previous.get(current);
-            pathCoords.unshift(prev.coords);
-            current = prev.node;
+        // Hedeften başlangıca doğru node'ları topla
+        while (current !== undefined && current !== null) {
+            pathNodeIds.unshift(current);
+            current = previous.get(current);
         }
 
-        // Başlangıç noktasını ekle
+        // Node ID'lerini koordinatlara çevir
+        const pathCoords = pathNodeIds.map(id => idToCoord.get(id));
+
+        console.log('Path bulundu:', pathCoords.length, 'nokta');
         if (pathCoords.length > 0) {
-            for (const [key, id] of coordToId) {
-                if (id === startNodeId) {
-                    const [x, y] = key.split(',').map(parseFloat);
-                    pathCoords.unshift([x, y]);
-                    break;
-                }
-            }
+            console.log('İlk 5 nokta (başlangıçtan hedefe):', pathCoords.slice(0, 5).map(p => `(${p[0].toFixed(1)}, ${p[1].toFixed(1)})`));
+            console.log('Son 3 nokta:', pathCoords.slice(-3).map(p => `(${p[0].toFixed(1)}, ${p[1].toFixed(1)})`));
         }
 
         return pathCoords.length > 1 ? pathCoords : null;

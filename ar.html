@@ -628,11 +628,17 @@
                 compassListeners.webkit = null;
             }
             
-            // AR Scene'i kaldır (kamera da kapanır)
+            // Kamera stream'lerini durdur
+            stopAllCameraStreams();
+            
+            // AR Scene'i kaldır
             if (activeAScene) {
                 activeAScene.remove();
                 activeAScene = null;
             }
+            
+            // Sayfadaki tüm a-scene'leri de kaldır (güvenlik için)
+            document.querySelectorAll('a-scene').forEach(scene => scene.remove());
             
             // Popup'ı gizle
             const popup = document.getElementById('popup');
@@ -652,7 +658,48 @@
                 container.classList.remove('grow');
             }
             
+            // Okları gizle
+            hideAllArrows();
+            
             console.log('AR ve kamera temizlendi');
+        }
+        
+        // Tüm kamera stream'lerini durdur
+        function stopAllCameraStreams() {
+            // Video elementlerinden stream'leri durdur
+            document.querySelectorAll('video').forEach(video => {
+                if (video.srcObject) {
+                    video.srcObject.getTracks().forEach(track => {
+                        track.stop();
+                        console.log('Video track durduruldu:', track.kind);
+                    });
+                    video.srcObject = null;
+                }
+                video.pause();
+                video.remove();
+            });
+            
+            // Navigator'dan aktif stream'leri durdur
+            if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+                navigator.mediaDevices.getUserMedia({ video: true })
+                    .then(stream => {
+                        stream.getTracks().forEach(track => track.stop());
+                    })
+                    .catch(() => {}); // Hata varsa görmezden gel
+            }
+        }
+        
+        // Tüm okları gizle
+        function hideAllArrows() {
+            const leftArrow = document.getElementById('left-arrow');
+            const rightArrow = document.getElementById('right-arrow');
+            const upArrow = document.getElementById('up-arrow');
+            const upPerspectiveArrow = document.getElementById('up-arrow-perspective');
+            
+            if (leftArrow) leftArrow.classList.remove('fade-in');
+            if (rightArrow) rightArrow.classList.remove('fade-in');
+            if (upArrow) upArrow.classList.remove('fade-in');
+            if (upPerspectiveArrow) upPerspectiveArrow.classList.remove('fade-in');
         }
 
         // Yönlendirme oklarını ve doğru yön indikatörünü gösterir
@@ -702,9 +749,11 @@
 
                     if (currentOffset === 0) {
                         console.log('Animasyon tamamlandı!');
-                        popup.style.display = 'block';
                         
-                        // AR kamerasını durdur (listener'ları kaldır ama scene'i tutarak popup arkasında görünsün)
+                        // Önce kamerayı ve AR'ı tamamen durdur
+                        stopAllCameraStreams();
+                        
+                        // Listener'ları kaldır
                         if (compassListeners.absolute) {
                             window.removeEventListener("deviceorientationabsolute", compassListeners.absolute);
                             compassListeners.absolute = null;
@@ -714,15 +763,18 @@
                             compassListeners.webkit = null;
                         }
                         
+                        // A-Scene'i kaldır (kamera tamamen kapansın)
+                        if (activeAScene) {
+                            activeAScene.remove();
+                            activeAScene = null;
+                        }
+                        document.querySelectorAll('a-scene').forEach(scene => scene.remove());
+                        
                         // Okları gizle
-                        const leftArrow = document.getElementById('left-arrow');
-                        const rightArrow = document.getElementById('right-arrow');
-                        const upArrow = document.getElementById('up-arrow');
-                        const upPerspectiveArrow = document.getElementById('up-arrow-perspective');
-                        if (leftArrow) leftArrow.classList.remove('fade-in');
-                        if (rightArrow) rightArrow.classList.remove('fade-in');
-                        if (upArrow) upArrow.classList.remove('fade-in');
-                        if (upPerspectiveArrow) upPerspectiveArrow.classList.remove('fade-in');
+                        hideAllArrows();
+                        
+                        // Popup'ı göster
+                        popup.style.display = 'block';
                     } else {
                         requestAnimationFrame(monitorAnimation);
                     }

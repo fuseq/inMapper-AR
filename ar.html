@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset='utf-8'>
+    <meta http-equiv='X-UA-Compatible' content='IE=edge'>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>GeoAR.js demo</title>
+    <script src="https://aframe.io/releases/1.3.0/aframe.min.js"></script>
+    <script src="https://raw.githack.com/jeromeetienne/AR.js/master/aframe/build/aframe-ar.min.js"></script>
+    <script src="https://raw.githack.com/donmccurdy/aframe-extras/master/dist/aframe-extras.loaders.min.js"></script>
+    <script>
+        THREEx.ArToolkitContext.baseURL = 'https://raw.githack.com/jeromeetienne/ar.js/master/three.js/'
+    </script>
+    <script src="https://unpkg.com/@joeyklee/compass.js@latest/dist/compass.js"></script>
+    <script src="https://kit.fontawesome.com/a076d05399.js"></script>
+    <link rel="stylesheet" type="text/css" href="./style.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.4.2/css/all.css"
+        integrity="sha384-/rXc/GQVaYpyDdyxK+ecHPVYJSN9bmVFBvjA/9eOB+pb3F2w2N6fc5qB9Ew5yIns" crossorigin="anonymous">
+
+</head>
+
+<body style='margin: 0; overflow: hidden;'>
+
+    <div class="arrow left" id="left-arrow">
+        <img src="assets/left_arrow.png" alt="Left Arrow" class="arrow-icon left-arrow">
+    </div>
+    <div class="arrow right" id="right-arrow">
+        <img src="assets/right_arrow.png" alt="Right Arrow" class="arrow-icon right-arrow">
+    </div>
+    <div class="arrow up" id="up-arrow">
+        <img src="assets/ileri.png" alt="Up Arrow" class="arrow-icon up-arrow">
+    </div>
+    <div class="arrow up-perspective" id="up-arrow-perspective">
+        <img src="assets/arrow-up.png" alt="Up Arrow Perspective" class="arrow-icon up-arrow-perspective">
+    </div>
+    
+    <div class="container">
+        <svg class="progress-circle" width="200" height="200" viewBox="0 0 100 100" id="circle-svg">
+            <!-- Dış çember (gri arkaplan) -->
+            <circle cx="50" cy="50" r="45" fill="none" stroke="lightgray" stroke-width="5" />
+
+            <!-- İç çember (beyaz, %90 transpara) -->
+            <circle class="progress" cx="50" cy="50" r="45" fill="white" fill-opacity="0.1" stroke="white"
+                stroke-width="5" stroke-dasharray="283" stroke-dashoffset="283" />
+        </svg>
+    </div>
+
+
+    <div class="bottom-container">
+
+        <!-- Map Section -->
+        <div class="map-section">
+            <iframe src="https://cbaines.github.io/leaflet-indoor/examples/" frameborder="0"
+                class="map-iframe"></iframe>
+        </div>
+        <div class="button-section">
+            <button class="center-button">
+                <img src="assets/cube_white.png" alt="Cube Icon" /> <!-- Resim burada kullanılıyor -->
+                View In AR
+            </button>
+            <button class="right-button">Stop</button>
+        </div>
+
+        <!-- Info Section -->
+        <div class="info-section">
+            <div class="destination">
+                <a class="image-button">
+                    <img src="https://i.ibb.co/PjjtDkp/inmapper-1.png" alt="Icon" />
+                </a>
+                <div class="destination-details">
+                    <div class="destination-name" id="destinationName">Hedef Yön</div>
+                    <div class="time-info">
+                        <i class="fa-solid fa-person-running"></i> <span id="directionText">Yükleniyor...</span>
+                    </div>
+                </div>
+            </div>
+            <div class="icon-buttons-container">
+                <a class="circular-icon-button">
+                    <i class="fa-solid fa-question"></i>
+                </a>
+                <a class="circular-icon-button">
+                    <i class="fa-solid fa-xmark"></i>
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <div class="popup" id="popup">
+        <div class="popup-content">
+            <a href="https://imgbb.com/">
+                <img src="assets/location.gif" alt="location" class="popup-image">
+            </a>
+            <div class="popup-message">Harita Ekranına Dönmek İçin Tamam Butonuna Basabilir Veya Tekrar Butonuna Basarak
+                Hedef Noktanızı Tekrar Görebilirsiniz</div><br>
+
+            <div class="popup-button-container">
+                <button class="btn-ok" onclick="">
+                    <i class="fas fa-check"></i>
+                    <span>Tamam</span>
+                </button>
+
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // URL'den hedef açıyı al
+        function getQueryParams() {
+            const params = new URLSearchParams(window.location.search);
+            return {
+                angle: parseFloat(params.get('angle')) || 0,
+                compass: params.get('compass') || 'Kuzey'
+            };
+        }
+        
+        const targetParams = getQueryParams();
+        const directionToTurn = targetParams.angle;
+        
+        console.log('Hedef açı:', directionToTurn);
+        console.log('Hedef yön:', targetParams.compass);
+        
+        // UI güncelle
+        document.getElementById('directionText').textContent = targetParams.compass + ' yönüne dönün';
+        
+        let directionMatches = false;
+        let isLoading = false;
+
+        document.addEventListener('DOMContentLoaded', function () {
+            const centerButton = document.querySelector('.center-button');
+            const rightButton = document.querySelector('.right-button');
+            const okButton = document.querySelector('.btn-ok');
+            const bottomContainer = document.querySelector('.bottom-container');
+            const popup = document.getElementById('popup');
+            const aScene = document.querySelector('a-scene');
+
+            centerButton.addEventListener('click', function () {
+                const aScene = document.createElement('a-scene');
+                aScene.setAttribute('vr-mode-ui', 'enabled: false');
+                aScene.style.position = 'absolute';
+                aScene.style.top = '0';
+                aScene.style.left = '0';
+                aScene.style.width = '100%';
+                aScene.style.height = '100%';
+                aScene.style.zIndex = '1';
+                document.body.appendChild(aScene);
+                bottomContainer.style.height = '40%';
+                centerButton.style.display = 'none';
+                rightButton.style.display = 'block';
+                
+                // Pusula dinlemeyi başlat
+                startCompassListener((compass, beta) => {
+                    showArrow(directionToTurn, compass, beta);
+                });
+            });
+
+            rightButton.addEventListener('click', function () {
+                if (aScene) {
+                    aScene.remove();
+                }
+                if (popup) {
+                    popup.remove();
+                }
+                bottomContainer.style.height = '100%';
+                centerButton.style.display = 'none';
+                rightButton.style.display = 'none';
+            });
+
+            okButton.addEventListener('click', function () {
+                if (aScene) {
+                    aScene.remove();
+                }
+                if (popup) {
+                    popup.remove();
+                }
+                bottomContainer.style.height = '100%';
+                centerButton.style.display = 'none';
+                rightButton.style.display = 'none';
+            });
+        });
+
+        // Yönlendirme oklarını ve doğru yön indikatörünü gösterir
+        function showArrow(directionToTurn, direction, beta) {
+            const arScene = document.querySelector('a-scene');
+            if (!arScene) {
+                return;
+            }
+            const leftArrow = document.getElementById('left-arrow');
+            const rightArrow = document.getElementById('right-arrow');
+            const upArrow = document.getElementById('up-arrow');
+            const upPerspectiveArrow = document.getElementById('up-arrow-perspective');
+            const popup = document.querySelector('.popup');
+            const container = document.querySelector('.container');
+            const progressCircle = document.querySelector('.progress');
+
+            // Okların görünürlüğünü sıfırlama
+            leftArrow.classList.remove('fade-in', 'fade-out');
+            rightArrow.classList.remove('fade-in', 'fade-out');
+            upArrow.classList.remove('fade-in', 'fade-out');
+            upPerspectiveArrow.classList.remove('fade-in', 'fade-out');
+
+            const upperBound = (directionToTurn + 20) % 360;
+            const lowerBound = (directionToTurn - 20 + 360) % 360;
+
+            // Eğer yön directionToTurn ile ±20 derece arasındaysa
+            if ((direction <= upperBound && direction >= lowerBound) ||
+                (lowerBound > upperBound && (direction >= lowerBound || direction <= upperBound))) {
+
+                // Yön doğru, okları kontrol et
+                if (beta < 30) {
+                    upPerspectiveArrow.classList.add('fade-in');
+                    upArrow.classList.remove('fade-in');
+                } else {
+                    upArrow.classList.add('fade-in');
+                    upPerspectiveArrow.classList.remove('fade-in');
+                }
+                leftArrow.classList.add('fade-out');
+                rightArrow.classList.add('fade-out');
+                directionMatches = true;
+                container.classList.add('grow');
+                isLoading = true;
+                progressCircle.style.strokeDashoffset = '0';
+
+                const monitorAnimation = () => {
+                    const currentOffset = parseFloat(getComputedStyle(progressCircle).strokeDashoffset);
+
+                    if (currentOffset === 0) {
+                        console.log('Animasyon tamamlandı!');
+                        popup.style.display = 'block';
+                    } else {
+                        requestAnimationFrame(monitorAnimation);
+                    }
+                };
+
+                requestAnimationFrame(monitorAnimation);
+
+            } else {
+                // Sola veya sağa dönüş gerekli
+                const clockwise = (directionToTurn - direction + 360) % 360;
+                const counterclockwise = (direction - directionToTurn + 360) % 360;
+
+                if (clockwise <= counterclockwise) {
+                    leftArrow.classList.add('fade-out');
+                    upArrow.classList.remove('fade-in');
+                    upPerspectiveArrow.classList.remove('fade-in');
+                    rightArrow.classList.add('fade-in');
+                } else {
+                    leftArrow.classList.add('fade-in');
+                    upArrow.classList.remove('fade-in');
+                    upPerspectiveArrow.classList.remove('fade-in');
+                    rightArrow.classList.add('fade-out');
+                }
+                directionMatches = false;
+                container.classList.remove('grow');
+                progressCircle.style.strokeDashoffset = '283';
+            }
+        }
+
+        function startCompassListener(callback) {
+            if (!window.DeviceOrientationEvent) {
+                console.warn("DeviceOrientation API not available");
+                return;
+            }
+            const absoluteListener = (e) => {
+                if (!e.absolute || e.alpha == null || e.beta == null || e.gamma == null) {
+                    return;
+                }
+                let compass = -(e.alpha + e.beta * e.gamma / 90);
+                compass -= Math.floor(compass / 360) * 360;
+                callback(compass, e.beta);
+            };
+
+            const webkitListener = (e) => {
+                let compass = e.webkitCompassHeading;
+                if (compass != null && !isNaN(compass)) {
+                    callback(compass, e.beta);
+                    window.removeEventListener("deviceorientation", webkitListener);
+                }
+            };
+
+            function addListeners() {
+                window.addEventListener("deviceorientationabsolute", absoluteListener);
+                window.addEventListener("deviceorientation", webkitListener);
+            }
+
+            if (typeof DeviceOrientationEvent.requestPermission === "function") {
+                DeviceOrientationEvent.requestPermission()
+                    .then(response => {
+                        if (response === "granted") {
+                            addListeners();
+                        } else {
+                            console.warn("Permission for DeviceOrientationEvent not granted");
+                        }
+                    })
+                    .catch(error => {
+                        console.error("Error requesting permission:", error);
+                    });
+            } else {
+                addListeners();
+            }
+        }
+    </script>
+</body>
+
+</html>

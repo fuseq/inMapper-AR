@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="tr">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet"
+        href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" />
+    <link rel="stylesheet" type="text/css" href="./style.css" />
+    <!-- SheetJS for Excel reading -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <title>Koordinat Giriş Sayfası</title>
+
+</head>
+
+<body>
+    <div class="input-group">
+        <label for="startRoom">Başlangıç Birimi:</label>
+        <select id="startRoom">
+            <option value="">-- Yükleniyor --</option>
+        </select>
+    </div>
+    <div class="input-group">
+        <label for="endRoom">Hedef Birimi:</label>
+        <select id="endRoom">
+            <option value="">-- Yükleniyor --</option>
+        </select>
+    </div>
+    <div class="button-container">
+        <a href="#" class="ar-button" id="ar-button">
+            <span class="material-symbols-outlined">
+                flip
+            </span>
+            AR'yi Kullan
+        </a>
+    </div>
+
+    <script src="./map-direction.js"></script>
+    <script>
+        let mapDirection = null;
+        let calculatedAngle = null;
+        let excelData = {}; // Excel'den okunan veriler: { ID: { title, subtitle } }
+
+        document.addEventListener('DOMContentLoaded', async function() {
+            mapDirection = new MapDirection();
+            
+            // Excel ve SVG'yi paralel yükle
+            await Promise.all([
+                loadExcelData(),
+                loadDefaultSVG()
+            ]);
+            
+            // Dropdown'ları doldur
+            populateSelects();
+            
+            // AR butonu
+            document.getElementById('ar-button').addEventListener('click', function(event) {
+                event.preventDefault();
+                
+                const startId = document.getElementById('startRoom').value;
+                const endId = document.getElementById('endRoom').value;
+                
+                if (!startId || !endId) {
+                    alert('Lütfen başlangıç ve hedef birim seçin!');
+                    return;
+                }
+                
+                if (startId === endId) {
+                    alert('Başlangıç ve hedef aynı olamaz!');
+                    return;
+                }
+                
+                // Yön hesapla
+                const direction = mapDirection.calculateDirection(startId, endId);
+                
+                if (!direction) {
+                    alert('Yön hesaplanamadı!');
+                    return;
+                }
+                
+                console.log('Hesaplanan yön:', direction);
+                
+                // AR sayfasına yönlendir - sadece açı bilgisi
+                window.location.href = `ar.html?angle=${direction.compassAngle}&compass=${encodeURIComponent(direction.compass)}`;
+            });
+        });
+        
+        async function loadExcelData() {
+            try {
+                const response = await fetch('./sample.xlsx');
+                if (!response.ok) return;
+                
+                const arrayBuffer = await response.arrayBuffer();
+                const workbook = XLSX.read(arrayBuffer, { type: 'array' });
+                
+                // İlk sheet'i al
+                const sheetName = workbook.SheetNames[0];
+                const sheet = workbook.Sheets[sheetName];
+                
+                // JSON'a çevir
+                const jsonData = XLSX.utils.sheet_to_json(sheet);
+                
+                
+                // ID bazlı map oluştur
+                jsonData.forEach(row => {
+                    const id = row.ID || row.id || row.Id;
+                    const title = row.Title || row.title || row.TITLE || '';
+                    const subtitle = row.Subtitle || row.subtitle || row.SUBTITLE || row.SubTitle || '';
+                    
+                    if (id) {
+                        excelData[id] = { title, subtitle };
+                    }
+                });
+                
+                console.log('Excel yüklendi:', Object.keys(excelData).length, 'birim');
+            } catch (e) {
+                console.log('Excel yüklenemedi:', e);
+            }
+        }
+        
+        async function loadDefaultSVG() {
+            try {
+                let response = await fetch('./sample.svg');
+                if (!response.ok) {
+                    response = await fetch('../sample.svg');
+                }
+                if (response.ok) {
+                    const content = await response.text();
+                    mapDirection.loadSVG(content);
+                }
+            } catch (e) {
+                console.log('SVG yüklenemedi:', e);
+            }
+        }
+        
+        function populateSelects() {
+            const rooms = mapDirection.getRooms();
+            const startSelect = document.getElementById('startRoom');
+            const endSelect = document.getElementById('endRoom');
+            
+            startSelect.innerHTML = '<option value="">-- Birim Seçin --</option>';
+            endSelect.innerHTML = '<option value="">-- Birim Seçin --</option>';
+            
+            // ID ile başlayan odaları filtrele ve sırala
+            const filteredRooms = rooms
+                .filter(r => r.id.startsWith('ID'))
+                .sort((a, b) => a.id.localeCompare(b.id));
+            
+            filteredRooms.forEach(room => {
+                // Excel'den eşleşen veriyi bul
+                const excelInfo = excelData[room.id];
+                
+                let displayText;
+                if (excelInfo && (excelInfo.title || excelInfo.subtitle)) {
+                    // Title ve subtitle'ı birleştir
+                    const parts = [];
+                    if (excelInfo.title) parts.push(excelInfo.title);
+                    if (excelInfo.subtitle) parts.push(excelInfo.subtitle);
+                    displayText = parts.join(' - ');
+                } else {
+                    // Excel'de yoksa ID ve type göster
+                    displayText = `${room.id} (${room.type})`;
+                }
+                
+                const opt1 = document.createElement('option');
+                opt1.value = room.id;
+                opt1.textContent = displayText;
+                startSelect.appendChild(opt1);
+                
+                const opt2 = document.createElement('option');
+                opt2.value = room.id;
+                opt2.textContent = displayText;
+                endSelect.appendChild(opt2);
+            });
+        }
+    </script>
+</body>
+
+</html>

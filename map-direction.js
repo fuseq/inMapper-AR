@@ -338,8 +338,8 @@ class MapDirection {
 
             if (length < 1) continue; // Çok kısa segmentleri atla
 
-            // Uzunluk^2 × mesafe faktörü
-            const weight = length * length / (i + 1);
+            // Tüm segmentler eşit ağırlıkta (sadece uzunluğa göre)
+            const weight = length;
 
             weightedDx += (dx / length) * weight;
             weightedDy += (dy / length) * weight;

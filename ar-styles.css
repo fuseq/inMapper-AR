@@ -1,0 +1,635 @@
+/* ============================================
+   MODERN AR NAVIGATION UI - HyperAR Style
+   ============================================ */
+
+/* CSS Variables */
+:root {
+    --primary: #00D4FF;
+    --primary-glow: rgba(0, 212, 255, 0.5);
+    --secondary: #7B2FFF;
+    --success: #00FF88;
+    --success-glow: rgba(0, 255, 136, 0.5);
+    --warning: #FFB800;
+    --danger: #FF3366;
+    --dark: #0A0E17;
+    --dark-glass: rgba(10, 14, 23, 0.7);
+    --light-glass: rgba(255, 255, 255, 0.1);
+    --border-glass: rgba(255, 255, 255, 0.15);
+    --text-primary: #FFFFFF;
+    --text-secondary: rgba(255, 255, 255, 0.7);
+    --font-main: 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: var(--font-main);
+    overflow: hidden;
+    background: #000;
+}
+
+/* ============================================
+   TOP INFO BAR - Glassmorphism
+   ============================================ */
+.ar-top-bar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 100;
+    padding: 50px 20px 20px;
+    background: linear-gradient(180deg, rgba(0,0,0,0.8) 0%, transparent 100%);
+    display: flex;
+    justify-content: center;
+    opacity: 0;
+    transform: translateY(-20px);
+    transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.ar-top-bar.visible {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+.direction-card {
+    background: var(--dark-glass);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid var(--border-glass);
+    border-radius: 20px;
+    padding: 16px 24px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+}
+
+.direction-icon {
+    width: 50px;
+    height: 50px;
+    border-radius: 14px;
+    background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 24px;
+    box-shadow: 0 4px 15px var(--primary-glow);
+}
+
+.direction-info {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.direction-label {
+    font-size: 12px;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.direction-value {
+    font-size: 20px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.direction-angle {
+    font-size: 14px;
+    color: var(--primary);
+    font-weight: 500;
+}
+
+/* ============================================
+   NAVIGATION ARROWS - Modern SVG Style
+   ============================================ */
+.ar-arrows-container {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    pointer-events: none;
+    z-index: 50;
+}
+
+.ar-arrow {
+    position: absolute;
+    opacity: 0;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    filter: drop-shadow(0 0 30px var(--primary-glow));
+}
+
+.ar-arrow.visible {
+    opacity: 1;
+}
+
+/* Left Arrow */
+.ar-arrow-left {
+    left: 30px;
+    top: 50%;
+    transform: translateY(-50%);
+}
+
+.ar-arrow-left.visible {
+    animation: pulseLeft 1.5s ease-in-out infinite;
+}
+
+@keyframes pulseLeft {
+    0%, 100% { transform: translateY(-50%) translateX(0); }
+    50% { transform: translateY(-50%) translateX(-15px); }
+}
+
+/* Right Arrow */
+.ar-arrow-right {
+    right: 30px;
+    top: 50%;
+    transform: translateY(-50%);
+}
+
+.ar-arrow-right.visible {
+    animation: pulseRight 1.5s ease-in-out infinite;
+}
+
+@keyframes pulseRight {
+    0%, 100% { transform: translateY(-50%) translateX(0); }
+    50% { transform: translateY(-50%) translateX(15px); }
+}
+
+/* Forward Arrow */
+.ar-arrow-forward {
+    left: 50%;
+    top: 35%;
+    transform: translate(-50%, -50%);
+}
+
+.ar-arrow-forward.visible {
+    animation: pulseForward 1.2s ease-in-out infinite;
+}
+
+@keyframes pulseForward {
+    0%, 100% { transform: translate(-50%, -50%) scale(1); }
+    50% { transform: translate(-50%, -50%) scale(1.1); }
+}
+
+/* Arrow SVG Styling */
+.arrow-svg {
+    width: 80px;
+    height: 80px;
+}
+
+.arrow-svg-large {
+    width: 120px;
+    height: 120px;
+}
+
+.arrow-path {
+    fill: var(--primary);
+    filter: drop-shadow(0 0 10px var(--primary));
+}
+
+.arrow-path-success {
+    fill: var(--success);
+    filter: drop-shadow(0 0 15px var(--success-glow));
+}
+
+/* ============================================
+   PROGRESS RING - Neon Style
+   ============================================ */
+.ar-progress-container {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%) scale(0.5);
+    opacity: 0;
+    transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+    z-index: 60;
+    pointer-events: none;
+}
+
+.ar-progress-container.active {
+    transform: translate(-50%, -50%) scale(1);
+    opacity: 1;
+}
+
+.progress-ring {
+    width: 180px;
+    height: 180px;
+    position: relative;
+}
+
+.progress-ring svg {
+    transform: rotate(-90deg);
+    width: 100%;
+    height: 100%;
+}
+
+.progress-ring-bg {
+    fill: none;
+    stroke: rgba(255, 255, 255, 0.1);
+    stroke-width: 6;
+}
+
+.progress-ring-fill {
+    fill: none;
+    stroke: url(#progressGradient);
+    stroke-width: 6;
+    stroke-linecap: round;
+    stroke-dasharray: 502;
+    stroke-dashoffset: 502;
+    transition: stroke-dashoffset 3s linear;
+    filter: drop-shadow(0 0 10px var(--success-glow));
+}
+
+.progress-ring-fill.animating {
+    stroke-dashoffset: 0;
+}
+
+.progress-center {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    text-align: center;
+}
+
+.progress-icon {
+    font-size: 40px;
+    margin-bottom: 8px;
+}
+
+.progress-text {
+    font-size: 14px;
+    color: var(--text-secondary);
+    font-weight: 500;
+}
+
+/* ============================================
+   BOTTOM PANEL - Modern Card
+   ============================================ */
+.ar-bottom-panel {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 100;
+    transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.ar-bottom-panel.map-mode {
+    height: 100%;
+}
+
+.ar-bottom-panel.ar-mode {
+    height: 45%;
+}
+
+/* Map Container */
+.ar-map-container {
+    height: calc(100% - 140px);
+    background: var(--dark);
+    position: relative;
+    overflow: hidden;
+}
+
+/* Action Buttons */
+.ar-action-bar {
+    position: absolute;
+    bottom: 140px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 12px;
+    z-index: 110;
+}
+
+.ar-btn {
+    padding: 14px 28px;
+    border-radius: 50px;
+    font-size: 15px;
+    font-weight: 600;
+    border: none;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    transition: all 0.3s ease;
+    font-family: var(--font-main);
+}
+
+.ar-btn-primary {
+    background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
+    color: white;
+    box-shadow: 0 4px 20px var(--primary-glow);
+    position: relative;
+    overflow: hidden;
+}
+
+.ar-btn-primary::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
+    animation: btnShine 2s infinite;
+}
+
+@keyframes btnShine {
+    0% { left: -100%; }
+    100% { left: 100%; }
+}
+
+.ar-btn-primary:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 25px var(--primary-glow);
+}
+
+.ar-btn-danger {
+    background: var(--dark-glass);
+    backdrop-filter: blur(10px);
+    color: var(--danger);
+    border: 1px solid var(--danger);
+}
+
+.ar-btn-danger:hover {
+    background: var(--danger);
+    color: white;
+}
+
+.ar-btn-icon {
+    width: 20px;
+    height: 20px;
+}
+
+/* Info Bar */
+.ar-info-bar {
+    height: 100px;
+    background: var(--dark-glass);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border-top: 1px solid var(--border-glass);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 24px;
+}
+
+.ar-destination {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+
+.ar-destination-icon {
+    width: 56px;
+    height: 56px;
+    border-radius: 16px;
+    background: linear-gradient(135deg, var(--success) 0%, #00B377 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 24px;
+    box-shadow: 0 4px 15px var(--success-glow);
+}
+
+.ar-destination-info h3 {
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 4px;
+}
+
+.ar-destination-info p {
+    font-size: 14px;
+    color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.ar-destination-info p i {
+    color: var(--primary);
+}
+
+.ar-quick-actions {
+    display: flex;
+    gap: 12px;
+}
+
+.ar-icon-btn {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    background: var(--light-glass);
+    border: 1px solid var(--border-glass);
+    color: var(--text-primary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    font-size: 18px;
+}
+
+.ar-icon-btn:hover {
+    background: var(--primary);
+    border-color: var(--primary);
+    transform: scale(1.05);
+}
+
+/* ============================================
+   SUCCESS POPUP - Modern Modal
+   ============================================ */
+.ar-success-popup {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.8);
+    backdrop-filter: blur(10px);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 200;
+    animation: fadeIn 0.3s ease;
+}
+
+.ar-success-popup.visible {
+    display: flex;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+.ar-success-content {
+    background: var(--dark-glass);
+    backdrop-filter: blur(20px);
+    border: 1px solid var(--border-glass);
+    border-radius: 28px;
+    padding: 40px;
+    text-align: center;
+    max-width: 340px;
+    margin: 20px;
+    animation: slideUp 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@keyframes slideUp {
+    from {
+        opacity: 0;
+        transform: translateY(30px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.ar-success-icon {
+    width: 100px;
+    height: 100px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--success) 0%, #00B377 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto 24px;
+    font-size: 48px;
+    box-shadow: 0 8px 30px var(--success-glow);
+    animation: successPulse 2s ease-in-out infinite;
+}
+
+@keyframes successPulse {
+    0%, 100% { box-shadow: 0 8px 30px var(--success-glow); }
+    50% { box-shadow: 0 8px 50px var(--success-glow), 0 0 60px var(--success-glow); }
+}
+
+.ar-success-content h2 {
+    font-size: 24px;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin-bottom: 12px;
+}
+
+.ar-success-content p {
+    font-size: 15px;
+    color: var(--text-secondary);
+    line-height: 1.6;
+    margin-bottom: 28px;
+}
+
+.ar-success-btn {
+    width: 100%;
+    padding: 16px;
+    border-radius: 14px;
+    font-size: 16px;
+    font-weight: 600;
+    border: none;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    font-family: var(--font-main);
+    background: linear-gradient(135deg, var(--success) 0%, #00B377 100%);
+    color: white;
+    box-shadow: 0 4px 20px var(--success-glow);
+}
+
+.ar-success-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 25px var(--success-glow);
+}
+
+/* ============================================
+   COMPASS INDICATOR
+   ============================================ */
+.ar-compass {
+    position: fixed;
+    top: 140px;
+    right: 20px;
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    background: var(--dark-glass);
+    backdrop-filter: blur(10px);
+    border: 1px solid var(--border-glass);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 90;
+    opacity: 0;
+    transition: all 0.3s ease;
+}
+
+.ar-compass.visible {
+    opacity: 1;
+}
+
+.ar-compass-needle {
+    width: 4px;
+    height: 30px;
+    background: linear-gradient(180deg, var(--danger) 50%, var(--text-secondary) 50%);
+    border-radius: 2px;
+    transition: transform 0.1s ease;
+}
+
+/* ============================================
+   DISTANCE BADGE
+   ============================================ */
+.ar-distance-badge {
+    position: fixed;
+    bottom: 160px;
+    left: 20px;
+    background: var(--dark-glass);
+    backdrop-filter: blur(10px);
+    border: 1px solid var(--border-glass);
+    border-radius: 12px;
+    padding: 12px 16px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    z-index: 90;
+    opacity: 0;
+    transition: all 0.3s ease;
+}
+
+.ar-distance-badge.visible {
+    opacity: 1;
+}
+
+.ar-distance-badge i {
+    color: var(--primary);
+    font-size: 18px;
+}
+
+.ar-distance-badge span {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+/* ============================================
+   UTILITIES
+   ============================================ */
+.hidden {
+    display: none !important;
+}
+
+.sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    border: 0;
+}
+

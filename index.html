@@ -9,147 +9,315 @@
     <link rel="stylesheet" type="text/css" href="./style.css" />
     <!-- SheetJS for Excel reading -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-    <title>Koordinat Giriş Sayfası</title>
-
+    <title>Çok Katlı Navigasyon</title>
+    <style>
+        .floor-selector {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+        .floor-selector .input-group {
+            flex: 1;
+        }
+        .floor-badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            margin-left: 8px;
+            background: #e0e0e0;
+        }
+        .floor-badge.floor-0 { background: #4CAF50; color: white; }
+        .floor-badge.floor--1 { background: #2196F3; color: white; }
+        .floor-badge.floor--2 { background: #FF9800; color: white; }
+        
+        .route-preview {
+            background: #f5f5f5;
+            border-radius: 8px;
+            padding: 15px;
+            margin: 15px 0;
+            display: none;
+        }
+        .route-preview.show { display: block; }
+        .route-preview h4 {
+            margin: 0 0 10px 0;
+            color: #333;
+        }
+        .route-step {
+            display: flex;
+            align-items: center;
+            padding: 8px 0;
+            border-bottom: 1px solid #ddd;
+        }
+        .route-step:last-child { border-bottom: none; }
+        .route-step .step-icon {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-right: 12px;
+            font-size: 18px;
+        }
+        .route-step .step-icon.start { background: #4CAF50; color: white; }
+        .route-step .step-icon.portal { background: #FF9800; color: white; }
+        .route-step .step-icon.end { background: #f44336; color: white; }
+        .route-step .step-text {
+            flex: 1;
+        }
+        .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(255,255,255,0.9);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+        .loading-overlay.hidden { display: none; }
+        .loading-spinner {
+            text-align: center;
+        }
+        .loading-spinner .spinner {
+            width: 50px;
+            height: 50px;
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #3498db;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 15px;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
 </head>
 
 <body>
+    <div class="loading-overlay" id="loadingOverlay">
+        <div class="loading-spinner">
+            <div class="spinner"></div>
+            <div>Haritalar yükleniyor...</div>
+        </div>
+    </div>
+
+    <h2 style="text-align: center; margin-bottom: 20px;">🏢 Çok Katlı Navigasyon</h2>
+
+    <!-- Kat Seçimi -->
+    <div class="floor-selector">
+        <div class="input-group">
+            <label for="startFloor">Başlangıç Katı:</label>
+            <select id="startFloor">
+                <option value="">-- Yükleniyor --</option>
+            </select>
+        </div>
+        <div class="input-group">
+            <label for="endFloor">Hedef Katı:</label>
+            <select id="endFloor">
+                <option value="">-- Yükleniyor --</option>
+            </select>
+        </div>
+    </div>
+
+    <!-- Oda Seçimi -->
     <div class="input-group">
         <label for="startRoom">Başlangıç Birimi:</label>
         <select id="startRoom">
-            <option value="">-- Yükleniyor --</option>
+            <option value="">-- Önce kat seçin --</option>
         </select>
     </div>
     <div class="input-group">
         <label for="endRoom">Hedef Birimi:</label>
         <select id="endRoom">
-            <option value="">-- Yükleniyor --</option>
+            <option value="">-- Önce kat seçin --</option>
         </select>
     </div>
+
+    <!-- Rota Önizleme -->
+    <div class="route-preview" id="routePreview">
+        <h4>📍 Rota Özeti</h4>
+        <div id="routeSteps"></div>
+    </div>
+
     <div class="button-container">
         <a href="#" class="ar-button" id="ar-button">
             <span class="material-symbols-outlined">
                 flip
             </span>
-            AR'yi Kullan
+            AR Navigasyonu Başlat
         </a>
     </div>
 
     <script src="./map-direction.js"></script>
     <script>
         let mapDirection = null;
-        let calculatedAngle = null;
-        let excelData = {}; // Excel'den okunan veriler: { ID: { title, subtitle } }
+        let excelData = {}; // { floorId: { roomId: { title, subtitle } } }
+        let currentRoute = null;
 
         document.addEventListener('DOMContentLoaded', async function() {
             mapDirection = new MapDirection();
             
-            // Excel ve SVG'yi paralel yükle
-            await Promise.all([
-                loadExcelData(),
-                loadDefaultSVG()
-            ]);
-            
-            // Dropdown'ları doldur
-            populateSelects();
+            // Tüm katları yükle
+            try {
+                await mapDirection.loadAllFloors('./zorlu');
+                await loadExcelData();
+                
+                // Kat dropdown'larını doldur
+                populateFloorSelects();
+                
+                // Event listener'lar
+                document.getElementById('startFloor').addEventListener('change', onStartFloorChange);
+                document.getElementById('endFloor').addEventListener('change', onEndFloorChange);
+                document.getElementById('startRoom').addEventListener('change', updateRoutePreview);
+                document.getElementById('endRoom').addEventListener('change', updateRoutePreview);
+                
+                document.getElementById('loadingOverlay').classList.add('hidden');
+            } catch (e) {
+                console.error('Yükleme hatası:', e);
+                document.getElementById('loadingOverlay').innerHTML = `
+                    <div style="text-align: center; color: red;">
+                        <p>Haritalar yüklenemedi!</p>
+                        <p>${e.message}</p>
+                    </div>
+                `;
+            }
             
             // AR butonu
             document.getElementById('ar-button').addEventListener('click', function(event) {
                 event.preventDefault();
                 
-                const startId = document.getElementById('startRoom').value;
-                const endId = document.getElementById('endRoom').value;
+                const startFloor = document.getElementById('startFloor').value;
+                const endFloor = document.getElementById('endFloor').value;
+                const startRoom = document.getElementById('startRoom').value;
+                const endRoom = document.getElementById('endRoom').value;
                 
-                if (!startId || !endId) {
-                    alert('Lütfen başlangıç ve hedef birim seçin!');
+                if (!startFloor || !endFloor || !startRoom || !endRoom) {
+                    alert('Lütfen tüm alanları doldurun!');
                     return;
                 }
                 
-                if (startId === endId) {
+                if (startFloor === endFloor && startRoom === endRoom) {
                     alert('Başlangıç ve hedef aynı olamaz!');
                     return;
                 }
                 
-                // Yön hesapla
-                const direction = mapDirection.calculateDirection(startId, endId);
+                // Çoklu kat rotası hesapla
+                const route = mapDirection.calculateMultiFloorRoute(startRoom, startFloor, endRoom, endFloor);
                 
-                if (!direction) {
-                    alert('Yön hesaplanamadı!');
+                if (!route) {
+                    alert('Rota hesaplanamadı!');
                     return;
                 }
                 
-                console.log('Hesaplanan yön:', direction);
+                console.log('Hesaplanan rota:', route);
                 
-                // AR sayfasına yönlendir - açı ve koordinat bilgileri
+                // Rota bilgilerini encode et
+                const routeData = encodeURIComponent(JSON.stringify(route));
+                
+                // AR sayfasına yönlendir
                 const params = new URLSearchParams({
-                    angle: direction.compassAngle,
-                    compass: direction.compass,
-                    startX: direction.startPoint[0],
-                    startY: direction.startPoint[1],
-                    dirX: direction.directionVector[0],
-                    dirY: direction.directionVector[1],
-                    startRoom: startId,
-                    endRoom: endId
+                    routeData: routeData,
+                    startRoom: startRoom,
+                    endRoom: endRoom,
+                    startFloor: startFloor,
+                    endFloor: endFloor
                 });
+                
                 window.location.href = `ar.html?${params.toString()}`;
             });
         });
         
         async function loadExcelData() {
             try {
-                const response = await fetch('./sample.xlsx');
+                const response = await fetch('./zorlu.xlsx');
                 if (!response.ok) return;
                 
                 const arrayBuffer = await response.arrayBuffer();
                 const workbook = XLSX.read(arrayBuffer, { type: 'array' });
                 
-                // İlk sheet'i al
-                const sheetName = workbook.SheetNames[0];
-                const sheet = workbook.Sheets[sheetName];
-                
-                // JSON'a çevir
-                const jsonData = XLSX.utils.sheet_to_json(sheet);
-                
-                
-                // ID bazlı map oluştur
-                jsonData.forEach(row => {
-                    const id = row.ID || row.id || row.Id;
-                    const title = row.Title || row.title || row.TITLE || '';
-                    const subtitle = row.Subtitle || row.subtitle || row.SUBTITLE || row.SubTitle || '';
+                // Tüm sheet'leri işle (her sheet bir kat olabilir)
+                workbook.SheetNames.forEach(sheetName => {
+                    const sheet = workbook.Sheets[sheetName];
+                    const jsonData = XLSX.utils.sheet_to_json(sheet);
                     
-                    if (id) {
-                        excelData[id] = { title, subtitle };
-                    }
+                    jsonData.forEach(row => {
+                        const id = row.ID || row.id || row.Id;
+                        const title = row.Title || row.title || row.TITLE || '';
+                        const subtitle = row.Subtitle || row.subtitle || row.SUBTITLE || row.SubTitle || '';
+                        const floor = row.Floor || row.floor || row.Kat || row.kat || '0';
+                        
+                        if (id) {
+                            if (!excelData[floor]) excelData[floor] = {};
+                            excelData[floor][id] = { title, subtitle };
+                            
+                            // Global olarak da ekle (eski uyumluluk)
+                            if (!excelData['all']) excelData['all'] = {};
+                            excelData['all'][id] = { title, subtitle, floor };
+                        }
+                    });
                 });
                 
-                console.log('Excel yüklendi:', Object.keys(excelData).length, 'birim');
+                console.log('Excel yüklendi');
             } catch (e) {
                 console.log('Excel yüklenemedi:', e);
             }
         }
         
-        async function loadDefaultSVG() {
-            try {
-                let response = await fetch('./sample.svg');
-                if (!response.ok) {
-                    response = await fetch('../sample.svg');
-                }
-                if (response.ok) {
-                    const content = await response.text();
-                    mapDirection.loadSVG(content);
-                }
-            } catch (e) {
-                console.log('SVG yüklenemedi:', e);
-            }
+        function populateFloorSelects() {
+            const floors = mapDirection.floorNames;
+            const startSelect = document.getElementById('startFloor');
+            const endSelect = document.getElementById('endFloor');
+            
+            const floorLabels = {
+                '0': 'Kat 0 (Zemin)',
+                '-1': 'Kat -1',
+                '-2': 'Kat -2',
+                '1': 'Kat 1',
+                '2': 'Kat 2'
+            };
+            
+            startSelect.innerHTML = '<option value="">-- Kat Seçin --</option>';
+            endSelect.innerHTML = '<option value="">-- Kat Seçin --</option>';
+            
+            floors.forEach(floor => {
+                const label = floorLabels[floor] || `Kat ${floor}`;
+                
+                const opt1 = document.createElement('option');
+                opt1.value = floor;
+                opt1.textContent = label;
+                startSelect.appendChild(opt1);
+                
+                const opt2 = document.createElement('option');
+                opt2.value = floor;
+                opt2.textContent = label;
+                endSelect.appendChild(opt2);
+            });
         }
         
-        function populateSelects() {
-            const rooms = mapDirection.getRooms();
-            const startSelect = document.getElementById('startRoom');
-            const endSelect = document.getElementById('endRoom');
+        function onStartFloorChange() {
+            const floorId = document.getElementById('startFloor').value;
+            populateRoomSelect('startRoom', floorId);
+            updateRoutePreview();
+        }
+        
+        function onEndFloorChange() {
+            const floorId = document.getElementById('endFloor').value;
+            populateRoomSelect('endRoom', floorId);
+            updateRoutePreview();
+        }
+        
+        function populateRoomSelect(selectId, floorId) {
+            const select = document.getElementById(selectId);
+            select.innerHTML = '<option value="">-- Birim Seçin --</option>';
             
-            startSelect.innerHTML = '<option value="">-- Birim Seçin --</option>';
-            endSelect.innerHTML = '<option value="">-- Birim Seçin --</option>';
+            if (!floorId) return;
+            
+            const rooms = mapDirection.getRoomsForFloor(floorId);
             
             // ID ile başlayan odaları filtrele ve sırala
             const filteredRooms = rooms
@@ -158,30 +326,110 @@
             
             filteredRooms.forEach(room => {
                 // Excel'den eşleşen veriyi bul
-                const excelInfo = excelData[room.id];
+                const floorExcel = excelData[floorId] || excelData['all'] || {};
+                const excelInfo = floorExcel[room.id] || (excelData['all'] || {})[room.id];
                 
                 let displayText;
                 if (excelInfo && (excelInfo.title || excelInfo.subtitle)) {
-                    // Title ve subtitle'ı birleştir
                     const parts = [];
                     if (excelInfo.title) parts.push(excelInfo.title);
                     if (excelInfo.subtitle) parts.push(excelInfo.subtitle);
                     displayText = parts.join(' - ');
                 } else {
-                    // Excel'de yoksa ID ve type göster
                     displayText = `${room.id} (${room.type})`;
                 }
                 
-                const opt1 = document.createElement('option');
-                opt1.value = room.id;
-                opt1.textContent = displayText;
-                startSelect.appendChild(opt1);
-                
-                const opt2 = document.createElement('option');
-                opt2.value = room.id;
-                opt2.textContent = displayText;
-                endSelect.appendChild(opt2);
+                const opt = document.createElement('option');
+                opt.value = room.id;
+                opt.textContent = displayText;
+                select.appendChild(opt);
             });
+        }
+        
+        function updateRoutePreview() {
+            const preview = document.getElementById('routePreview');
+            const stepsContainer = document.getElementById('routeSteps');
+            
+            const startFloor = document.getElementById('startFloor').value;
+            const endFloor = document.getElementById('endFloor').value;
+            const startRoom = document.getElementById('startRoom').value;
+            const endRoom = document.getElementById('endRoom').value;
+            
+            if (!startFloor || !endFloor || !startRoom || !endRoom) {
+                preview.classList.remove('show');
+                return;
+            }
+            
+            // Rota hesapla
+            const route = mapDirection.calculateMultiFloorRoute(startRoom, startFloor, endRoom, endFloor);
+            currentRoute = route;
+            
+            if (!route) {
+                stepsContainer.innerHTML = '<div style="color: red;">Rota bulunamadı!</div>';
+                preview.classList.add('show');
+                return;
+            }
+            
+            // Rota adımlarını göster
+            let html = '';
+            
+            // Başlangıç
+            html += `
+                <div class="route-step">
+                    <div class="step-icon start">📍</div>
+                    <div class="step-text">
+                        <strong>${getRoomDisplayName(startRoom, startFloor)}</strong>
+                        <span class="floor-badge floor-${startFloor}">Kat ${startFloor}</span>
+                    </div>
+                </div>
+            `;
+            
+            // Kat geçişleri
+            if (!route.isSameFloor && route.transitions) {
+                route.transitions.forEach((t, i) => {
+                    const portalIcon = t.portal.portalType === 'Elev' ? '🛗' : '🚶';
+                    const portalName = t.portal.portalType === 'Elev' ? 'Asansör' : 'Merdiven';
+                    
+                    html += `
+                        <div class="route-step">
+                            <div class="step-icon portal">${portalIcon}</div>
+                            <div class="step-text">
+                                ${portalName} ${t.portal.portalNumber} ile Kat ${t.toFloor}'e gidin
+                                <span class="floor-badge floor-${t.fromFloor}">Kat ${t.fromFloor}</span>
+                                →
+                                <span class="floor-badge floor-${t.toFloor}">Kat ${t.toFloor}</span>
+                            </div>
+                        </div>
+                    `;
+                });
+            }
+            
+            // Hedef
+            html += `
+                <div class="route-step">
+                    <div class="step-icon end">🎯</div>
+                    <div class="step-text">
+                        <strong>${getRoomDisplayName(endRoom, endFloor)}</strong>
+                        <span class="floor-badge floor-${endFloor}">Kat ${endFloor}</span>
+                    </div>
+                </div>
+            `;
+            
+            stepsContainer.innerHTML = html;
+            preview.classList.add('show');
+        }
+        
+        function getRoomDisplayName(roomId, floorId) {
+            const floorExcel = excelData[floorId] || excelData['all'] || {};
+            const excelInfo = floorExcel[roomId] || (excelData['all'] || {})[roomId];
+            
+            if (excelInfo && (excelInfo.title || excelInfo.subtitle)) {
+                const parts = [];
+                if (excelInfo.title) parts.push(excelInfo.title);
+                if (excelInfo.subtitle) parts.push(excelInfo.subtitle);
+                return parts.join(' - ');
+            }
+            return roomId;
         }
     </script>
 </body>

@@ -5,7 +5,7 @@
     <meta charset='utf-8'>
     <meta http-equiv='X-UA-Compatible' content='IE=edge'>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>GeoAR.js demo</title>
+    <title>Çok Katlı AR Navigasyon</title>
     <script src="https://aframe.io/releases/1.3.0/aframe.min.js"></script>
     <script src="https://raw.githack.com/jeromeetienne/AR.js/master/aframe/build/aframe-ar.min.js"></script>
     <script src="https://raw.githack.com/donmccurdy/aframe-extras/master/dist/aframe-extras.loaders.min.js"></script>
@@ -17,12 +17,202 @@
     <script src="./map-direction.js"></script>
     <link rel="stylesheet" type="text/css" href="./style.css" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
-    <link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.4.2/css/all.css"
-        integrity="sha384-/rXc/GQVaYpyDdyxK+ecHPVYJSN9bmVFBvjA/9eOB+pb3F2w2N6fc5qB9Ew5yIns" crossorigin="anonymous">
-
+    <style>
+        /* Portal Geçiş Overlay */
+        .portal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.9);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+            color: white;
+            text-align: center;
+            padding: 20px;
+        }
+        .portal-overlay.hidden { display: none; }
+        
+        .portal-icon {
+            font-size: 80px;
+            margin-bottom: 20px;
+            animation: bounce 1s infinite;
+        }
+        @keyframes bounce {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-20px); }
+        }
+        
+        .portal-title {
+            font-size: 24px;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+        .portal-subtitle {
+            font-size: 18px;
+            color: #aaa;
+            margin-bottom: 30px;
+        }
+        .portal-floors {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        .portal-floor-badge {
+            padding: 10px 20px;
+            border-radius: 10px;
+            font-size: 20px;
+            font-weight: bold;
+        }
+        .portal-floor-badge.from { background: #FF9800; }
+        .portal-floor-badge.to { background: #4CAF50; }
+        .portal-arrow { font-size: 30px; }
+        
+        .portal-confirm-btn {
+            background: #4CAF50;
+            color: white;
+            border: none;
+            padding: 15px 40px;
+            font-size: 18px;
+            border-radius: 10px;
+            cursor: pointer;
+            margin-top: 20px;
+        }
+        .portal-confirm-btn:hover {
+            background: #45a049;
+        }
+        
+        
+        /* ========== BOTTOM SHEET ========== */
+        .bottom-sheet {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: #fff;
+            border-radius: 20px 20px 0 0;
+            box-shadow: 0 -4px 20px rgba(0,0,0,0.15);
+            z-index: 5000;
+            padding: 16px 20px 24px 20px;
+        }
+        
+        .bottom-sheet-handle {
+            width: 40px;
+            height: 4px;
+            background: #ddd;
+            border-radius: 2px;
+            margin: 0 auto 16px auto;
+        }
+        
+        .bottom-sheet-content {
+            position: relative;
+            min-height: 50px;
+        }
+        
+        .bottom-sheet-info {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        
+        .bottom-sheet-icon {
+            width: 48px;
+            height: 48px;
+            border-radius: 12px;
+            background: #f5f5f5;
+            border: 1px solid #eee;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+        }
+        
+        .bottom-sheet-icon img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        
+        .bottom-sheet-text h3 {
+            margin: 0 0 4px 0;
+            font-size: 16px;
+            font-weight: 600;
+            color: #222;
+        }
+        
+        .bottom-sheet-text p {
+            margin: 0;
+            font-size: 14px;
+            color: #666;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        
+        .bottom-sheet-text p i {
+            font-size: 12px;
+            color: #888;
+        }
+        
+        .bottom-sheet-btn {
+            position: absolute;
+            right: 20px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: #4CAF50;
+            color: #fff;
+            border: none;
+            padding: 18px 24px;
+            border-radius: 12px;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            transition: background 0.2s;
+        }
+        
+        .bottom-sheet-btn:hover {
+            background: #43A047;
+        }
+        
+        .bottom-sheet-btn:active {
+            background: #388E3C;
+        }
+        
+        .bottom-sheet-btn.hidden {
+            display: none;
+        }
+        
+        .bottom-sheet-btn i {
+            font-size: 14px;
+        }
+    </style>
 </head>
 
 <body style='margin: 0; overflow: hidden;'>
+
+
+    <!-- Portal Geçiş Overlay -->
+    <div class="portal-overlay hidden" id="portalOverlay">
+        <div class="portal-icon" id="portalIcon">🛗</div>
+        <div class="portal-title" id="portalTitle">Asansör ile Kat Değiştirin</div>
+        <div class="portal-subtitle" id="portalSubtitle">Asansör 3 kullanarak aşağı inin</div>
+        <div class="portal-floors">
+            <div class="portal-floor-badge from" id="portalFromFloor">Kat 0</div>
+            <div class="portal-arrow">→</div>
+            <div class="portal-floor-badge to" id="portalToFloor">Kat -1</div>
+        </div>
+        <button class="portal-confirm-btn" id="portalConfirmBtn">
+            <i class="fas fa-check"></i> Kata Ulaştım
+        </button>
+    </div>
 
     <div class="arrow left" id="left-arrow">
         <img src="assets/left_arrow.png" alt="Left Arrow" class="arrow-icon left-arrow">
@@ -39,10 +229,7 @@
     
     <div class="container">
         <svg class="progress-circle" width="200" height="200" viewBox="0 0 100 100" id="circle-svg">
-            <!-- Dış çember (gri arkaplan) -->
             <circle cx="50" cy="50" r="45" fill="none" stroke="lightgray" stroke-width="5" />
-
-            <!-- İç çember (beyaz, %90 transpara) -->
             <circle class="progress" cx="50" cy="50" r="45" fill="white" fill-opacity="0.1" stroke="white"
                 stroke-width="5" stroke-dasharray="283" stroke-dashoffset="283" />
         </svg>
@@ -50,8 +237,6 @@
 
 
     <div class="bottom-container">
-
-        <!-- Map Section -->
         <div class="map-section" id="mapSection">
             <div id="svgContainer" style="width: 100%; height: 100%; overflow: hidden; position: relative;">
                 <div id="svgWrapper" style="transform-origin: 0 0; cursor: grab;">
@@ -61,33 +246,30 @@
         </div>
         <div class="button-section">
             <button class="center-button">
-                <img src="assets/cube_white.png" alt="Cube Icon" /> <!-- Resim burada kullanılıyor -->
+                <img src="assets/cube_white.png" alt="Cube Icon" />
                 View In AR
             </button>
             <button class="right-button">Stop</button>
         </div>
 
-        <!-- Info Section -->
-        <div class="info-section">
-            <div class="destination">
-                <a class="image-button">
+    </div>
+    
+    <!-- BOTTOM SHEET -->
+    <div class="bottom-sheet">
+        <div class="bottom-sheet-handle"></div>
+        <div class="bottom-sheet-content">
+            <div class="bottom-sheet-info">
+                <div class="bottom-sheet-icon">
                     <img src="https://i.ibb.co/PjjtDkp/inmapper-1.png" alt="Icon" />
-                </a>
-                <div class="destination-details">
-                    <div class="destination-name" id="destinationName">Hedef Yön</div>
-                    <div class="time-info">
-                        <i class="fa-solid fa-person-running"></i> <span id="directionText">Yükleniyor...</span>
-                    </div>
+                </div>
+                <div class="bottom-sheet-text">
+                    <h3 id="destinationName">Hedef Yön</h3>
+                    <p><i class="fa-solid fa-person-running"></i> <span id="directionText">Yükleniyor...</span></p>
                 </div>
             </div>
-            <div class="icon-buttons-container">
-                <a class="circular-icon-button">
-                    <i class="fa-solid fa-question"></i>
-                </a>
-                <a class="circular-icon-button">
-                    <i class="fa-solid fa-xmark"></i>
-                </a>
-            </div>
+            <button class="bottom-sheet-btn" id="nextStepBtn">
+                Sonraki <i class="fas fa-arrow-right"></i>
+            </button>
         </div>
     </div>
 
@@ -96,59 +278,302 @@
             <a href="https://imgbb.com/">
                 <img src="assets/location.gif" alt="location" class="popup-image">
             </a>
-            <div class="popup-message">Harita Ekranına Dönmek İçin Tamam Butonuna Basabilir Veya Tekrar Butonuna Basarak
-                Hedef Noktanızı Tekrar Görebilirsiniz</div><br>
-
+            <div class="popup-message" id="popupMessage">Yön tamamlandı!</div><br>
             <div class="popup-button-container">
-                <button class="btn-ok" onclick="">
+                <button class="btn-ok" id="popupOkBtn">
                     <i class="fas fa-check"></i>
-                    <span>Tamam</span>
+                    <span id="popupBtnText">Tamam</span>
                 </button>
-
             </div>
         </div>
     </div>
 
     <script>
-        // URL'den parametreleri al
-        function getQueryParams() {
-            const params = new URLSearchParams(window.location.search);
-            return {
-                angle: parseFloat(params.get('angle')) || 0,
-                compass: params.get('compass') || 'Kuzey',
-                startX: parseFloat(params.get('startX')) || 0,
-                startY: parseFloat(params.get('startY')) || 0,
-                dirX: parseFloat(params.get('dirX')) || 0,
-                dirY: parseFloat(params.get('dirY')) || 1,
-                startRoom: params.get('startRoom') || '',
-                endRoom: params.get('endRoom') || ''
-            };
-        }
+        // ==================== GLOBAL STATE ====================
+        let mapDirection = null;
+        let routeData = null;
+        let currentSegmentIndex = 0;
+        let currentDirection = null;
+        let directionToTurn = 0;
         
-        const targetParams = getQueryParams();
-        const directionToTurn = targetParams.angle;
-        
-        console.log('Hedef açı:', directionToTurn);
-        console.log('Hedef yön:', targetParams.compass);
-        console.log('Başlangıç:', targetParams.startX, targetParams.startY);
-        console.log('Yön vektörü:', targetParams.dirX, targetParams.dirY);
-        
-        // UI güncelle
-        document.getElementById('directionText').textContent = targetParams.compass + ' yönüne dönün';
-        
-        // ==================== SVG HARİTA YÖNETİMİ ====================
         let svgElement = null;
         let scale = 1;
         let panX = 0, panY = 0;
         let isPanning = false;
         let startPanX, startPanY;
         
-        // SVG'yi yükle
-        async function loadSVG() {
+        let directionMatches = false;
+        let isLoading = false;
+        let activeAScene = null;
+        let compassListeners = { absolute: null, webkit: null };
+
+        // ==================== URL PARAMS ====================
+        function getQueryParams() {
+            const params = new URLSearchParams(window.location.search);
+            return {
+                routeData: params.get('routeData'),
+                startRoom: params.get('startRoom') || '',
+                endRoom: params.get('endRoom') || '',
+                startFloor: params.get('startFloor') || '0',
+                endFloor: params.get('endFloor') || '0',
+                // Eski tek-kat uyumluluk
+                angle: parseFloat(params.get('angle')) || 0,
+                compass: params.get('compass') || 'Kuzey',
+                startX: parseFloat(params.get('startX')) || 0,
+                startY: parseFloat(params.get('startY')) || 0,
+                dirX: parseFloat(params.get('dirX')) || 0,
+                dirY: parseFloat(params.get('dirY')) || 1
+            };
+        }
+        
+        const targetParams = getQueryParams();
+
+        // ==================== INITIALIZATION ====================
+        document.addEventListener('DOMContentLoaded', async function() {
+            mapDirection = new MapDirection();
+            
+            // Rota verilerini parse et
+            if (targetParams.routeData) {
+                try {
+                    routeData = JSON.parse(decodeURIComponent(targetParams.routeData));
+                    console.log('Rota yüklendi:', routeData);
+                    
+                    // Çoklu kat modunda başlat
+                    await initMultiFloorMode();
+                } catch (e) {
+                    console.error('Rota parse hatası:', e);
+                    // Eski moda geri dön
+                    initSingleFloorMode();
+                }
+            } else {
+                // Eski tek-kat modu
+                initSingleFloorMode();
+            }
+            
+            setupEventListeners();
+        });
+
+        // ==================== SINGLE FLOOR MODE (Backward Compatible) ====================
+        function initSingleFloorMode() {
+            console.log('Tek kat modu');
+            directionToTurn = targetParams.angle;
+            
+            document.getElementById('directionText').textContent = targetParams.compass + ' yönüne dönün';
+            
+            // Sonraki adım butonunu gizle (tek kat modunda kullanılmaz)
+            document.getElementById('nextStepBtn').classList.add('hidden');
+            
+            loadSVGOld();
+        }
+
+        // ==================== MULTI FLOOR MODE ====================
+        async function initMultiFloorMode() {
+            console.log('Çok kat modu');
+            
+            // Tüm katları yükle
+            await mapDirection.loadAllFloors('./zorlu');
+            
+            // İlk segment ile başla
+            currentSegmentIndex = 0;
+            
+            // Segment UI'ı güncelle
+            updateSegmentUI();
+            
+            // İlk segmenti başlat
+            startCurrentSegment();
+        }
+        
+        let arButtonTimer = null; // AR butonu zamanlayıcısı
+        
+        function updateSegmentUI() {
+            if (!routeData || !routeData.segments) return;
+            
+            const segments = routeData.segments;
+            const nextStepBtn = document.getElementById('nextStepBtn');
+            const destinationName = document.getElementById('destinationName');
+            const directionText = document.getElementById('directionText');
+            
+            // Segment bilgisini güncelle
+            const currentSeg = segments[currentSegmentIndex];
+            const routeSegments = segments.filter(s => s.type !== 'portal_transition');
+            const currentRouteIndex = segments.slice(0, currentSegmentIndex + 1).filter(s => s.type !== 'portal_transition').length;
+            
+            if (currentSeg) {
+                if (currentSeg.type === 'portal_transition') {
+                    destinationName.textContent = `Kat ${currentSeg.floor} → ${currentSeg.toFloor}`;
+                } else {
+                    destinationName.textContent = `Kat ${currentSeg.floor} (${currentRouteIndex}/${routeSegments.length})`;
+                }
+            }
+            
+            // Sonraki adım butonunu göster/gizle
+            const isLastSegment = currentSegmentIndex >= segments.length - 1;
+            const isPortalTransition = currentSeg?.type === 'portal_transition';
+            
+            if (!isLastSegment && !isPortalTransition) {
+                nextStepBtn.classList.remove('hidden');
+            } else {
+                nextStepBtn.classList.add('hidden');
+            }
+            
+            // AR butonunu göster ve zamanlayıcı başlat
+            showARButtonWithTimer();
+        }
+        
+        function showARButtonWithTimer() {
+            const centerButton = document.querySelector('.center-button');
+            const bottomContainer = document.querySelector('.bottom-container');
+            
+            // Önceki zamanlayıcıyı temizle
+            if (arButtonTimer) {
+                clearTimeout(arButtonTimer);
+                arButtonTimer = null;
+            }
+            
+            // Butonu göster
+            centerButton.style.display = 'block';
+            bottomContainer.style.height = '100%';
+            
+            // 10 saniye sonra gizle
+            arButtonTimer = setTimeout(() => {
+                centerButton.style.display = 'none';
+                console.log('AR butonu 10 saniye sonra gizlendi');
+            }, 10000);
+        }
+        
+        function startCurrentSegment() {
+            if (!routeData || !routeData.segments) return;
+            
+            const segment = routeData.segments[currentSegmentIndex];
+            if (!segment) {
+                console.log('Tüm segmentler tamamlandı!');
+                showFinalPopup();
+                return;
+            }
+            
+            console.log(`Segment ${currentSegmentIndex + 1} başlıyor:`, segment);
+            
+            if (segment.type === 'portal_transition') {
+                // Portal geçişini atla, doğrudan sonraki segmente geç
+                console.log('Portal geçişi atlanıyor:', segment.description);
+                goToNextSegment();
+            } else {
+                // Normal rota segmenti
+                startRouteSegment(segment);
+            }
+        }
+        
+        function startRouteSegment(segment) {
+            // Kat değiştir
+            mapDirection.setCurrentFloor(segment.floor);
+            
+            // Direction bilgisini al
+            currentDirection = segment.direction;
+            
+            if (currentDirection) {
+                directionToTurn = currentDirection.compassAngle;
+                document.getElementById('directionText').textContent = currentDirection.compass + ' yönüne dönün';
+                document.getElementById('destinationName').textContent = `Kat ${segment.floor}`;
+            } else {
+                console.warn('Direction bulunamadı, segment:', segment);
+            }
+            
+            // SVG'yi yükle
+            loadFloorSVG(segment.floor, segment);
+            
+            // Segment UI güncelle
+            updateSegmentUI();
+        }
+        
+        function showPortalOverlay(segment) {
+            const overlay = document.getElementById('portalOverlay');
+            const icon = document.getElementById('portalIcon');
+            const title = document.getElementById('portalTitle');
+            const subtitle = document.getElementById('portalSubtitle');
+            const fromFloor = document.getElementById('portalFromFloor');
+            const toFloor = document.getElementById('portalToFloor');
+            
+            const portal = segment.portal;
+            const isElevator = portal?.portalType === 'Elev';
+            
+            icon.textContent = isElevator ? '🛗' : '🚶';
+            title.textContent = isElevator ? 'Asansör ile Kat Değiştirin' : 'Merdiven ile Kat Değiştirin';
+            subtitle.textContent = `${isElevator ? 'Asansör' : 'Merdiven'} ${portal?.portalNumber || ''} kullanın`;
+            fromFloor.textContent = `Kat ${segment.floor}`;
+            toFloor.textContent = `Kat ${segment.toFloor}`;
+            
+            overlay.classList.remove('hidden');
+            
+            // AR'ı durdur
+            stopARAndCleanup();
+        }
+        
+        function hidePortalOverlay() {
+            document.getElementById('portalOverlay').classList.add('hidden');
+        }
+        
+        function goToNextSegment() {
+            currentSegmentIndex++;
+            updateSegmentUI();
+            startCurrentSegment();
+        }
+        
+        function showFinalPopup() {
+            const popup = document.getElementById('popup');
+            const message = document.getElementById('popupMessage');
+            const btnText = document.getElementById('popupBtnText');
+            
+            message.textContent = `🎉 Hedefinize ulaştınız! (${targetParams.endRoom})`;
+            btnText.textContent = 'Başa Dön';
+            
+            popup.style.display = 'block';
+        }
+        
+        // ==================== SVG LOADING ====================
+        async function loadFloorSVG(floorId, segment) {
             try {
-                let response = await fetch('./sample.svg');
+                const response = await fetch(`./zorlu/${floorId}.svg`);
+                if (!response.ok) throw new Error(`SVG yüklenemedi: ${floorId}`);
+                
+                const content = await response.text();
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(content, 'image/svg+xml');
+                svgElement = doc.documentElement.cloneNode(true);
+                
+                svgElement.style.width = '100%';
+                svgElement.style.height = '100%';
+                svgElement.removeAttribute('width');
+                svgElement.removeAttribute('height');
+                svgElement.setAttribute('viewBox', '-20 -20 700 850');
+                
+                const wrapper = document.getElementById('svgWrapper');
+                wrapper.innerHTML = '';
+                wrapper.appendChild(svgElement);
+                
+                // Segment'e göre yön okunu ve path'i çiz
+                if (segment && segment.direction) {
+                    drawDirectionArrowMulti(segment);
+                    highlightSegmentPath(segment);
+                }
+                
+                // Başlangıç noktasına odaklan
+                if (segment && segment.direction && segment.direction.startPoint) {
+                    centerOnPoint(segment.direction.startPoint[0], segment.direction.startPoint[1]);
+                }
+                
+                setupZoomPan();
+                console.log(`Kat ${floorId} SVG yüklendi`);
+            } catch (e) {
+                console.error('SVG yüklenemedi:', e);
+            }
+        }
+        
+        // Eski tek-kat SVG yükleyici
+        async function loadSVGOld() {
+            try {
+                let response = await fetch('./zorlu/0.svg');
                 if (!response.ok) {
-                    response = await fetch('../sample.svg');
+                    response = await fetch('./sample.svg');
                 }
                 if (response.ok) {
                     const content = await response.text();
@@ -156,243 +581,64 @@
                     const doc = parser.parseFromString(content, 'image/svg+xml');
                     svgElement = doc.documentElement.cloneNode(true);
                     
-                    // SVG boyutlarını ayarla
                     svgElement.style.width = '100%';
                     svgElement.style.height = '100%';
                     svgElement.removeAttribute('width');
                     svgElement.removeAttribute('height');
-                    
-                    // viewBox'ı transform sonrası gerçek içeriğe göre ayarla
-                    // Transform: translate(-155.17664,-527.47596)
-                    // Orijinal içerik: yaklaşık 0-800 x ve 527-1320 y
-                    // Transform sonrası: -155 ile 645 x ve 0 ile 793 y
                     svgElement.setAttribute('viewBox', '-20 -20 700 850');
                     
-                    // SVG'yi ekle
                     const wrapper = document.getElementById('svgWrapper');
                     wrapper.appendChild(svgElement);
                     
-                    // Yön okunu çiz
                     drawDirectionArrow();
-                    
-                    // Kullanılan path'leri highlight et
                     highlightUsedPaths();
-                    
-                    // Başlangıç noktasına odaklan
                     centerOnPoint(targetParams.startX, targetParams.startY);
-                    
-                    // Zoom/Pan olaylarını ekle
                     setupZoomPan();
-                    
-                    console.log('SVG yüklendi');
                 }
             } catch (e) {
                 console.error('SVG yüklenemedi:', e);
             }
         }
         
-        // Kullanılan path'leri highlight et
-        async function highlightUsedPaths() {
-            if (!svgElement) return;
+        // ==================== DRAWING FUNCTIONS ====================
+        function drawDirectionArrowMulti(segment) {
+            if (!svgElement || !segment.direction) return;
             
             const ns = 'http://www.w3.org/2000/svg';
+            const direction = segment.direction;
             
-            // MapDirection ile path'i tekrar hesapla
-            const mapDir = new MapDirection();
-            
-            // SVG içeriğini MapDirection'a yükle
-            const svgContent = new XMLSerializer().serializeToString(svgElement);
-            mapDir.loadSVG(svgContent);
-            
-            // Path'i bul
-            const startRoom = mapDir.rooms.find(r => r.id === targetParams.startRoom);
-            const endRoom = mapDir.rooms.find(r => r.id === targetParams.endRoom);
-            
-            if (!startRoom || !endRoom) {
-                console.log('Odalar bulunamadı:', targetParams.startRoom, targetParams.endRoom);
-                return;
-            }
-            
-            const startDoor = mapDir.findDoorForRoom(targetParams.startRoom);
-            const endDoor = mapDir.findDoorForRoom(targetParams.endRoom);
-            
-            const startPoint = startDoor ? startDoor.center : startRoom.center;
-            const endPoint = endDoor ? endDoor.center : endRoom.center;
-            
-            const pathResult = mapDir.findPathBetweenPoints(startPoint, endPoint);
-            
-            if (!pathResult || pathResult.length < 2) {
-                console.log('Path bulunamadı');
-                return;
-            }
-            
-            console.log('Highlight edilecek path noktaları:', pathResult.length);
-            
-            // SVG'deki Paths grubunu bul ve görünür yap
-            const pathsGroup = svgElement.querySelector('g[id="Paths"]') || 
-                               svgElement.querySelector('g[inkscape\\:label="Paths"]');
-            
-            if (pathsGroup) {
-                pathsGroup.style.display = 'block';
-                pathsGroup.style.visibility = 'visible';
-                pathsGroup.style.opacity = '0.3';
-            }
-            
-            // Transform'u al
-            const roomsGroup = svgElement.querySelector('g[id="Rooms"]') || 
-                               svgElement.querySelector('g[inkscape\\:label="Rooms"]');
-            let groupTransform = '';
-            if (roomsGroup) {
-                groupTransform = roomsGroup.getAttribute('transform') || '';
-            }
-            
-            // Highlight grubu oluştur
-            const highlightGroup = document.createElementNS(ns, 'g');
-            highlightGroup.setAttribute('id', 'path-highlight-group');
-            if (groupTransform) {
-                highlightGroup.setAttribute('transform', groupTransform);
-            }
-            
-            // Tüm path'i mavi çizgi olarak çiz
-            for (let i = 0; i < pathResult.length - 1; i++) {
-                const p1 = pathResult[i];
-                const p2 = pathResult[i + 1];
-                
-                const line = document.createElementNS(ns, 'line');
-                line.setAttribute('x1', p1[0]);
-                line.setAttribute('y1', p1[1]);
-                line.setAttribute('x2', p2[0]);
-                line.setAttribute('y2', p2[1]);
-                line.setAttribute('stroke', '#0066ff');
-                line.setAttribute('stroke-width', '4');
-                line.setAttribute('stroke-linecap', 'round');
-                line.setAttribute('opacity', '0.7');
-                highlightGroup.appendChild(line);
-            }
-            
-            // İlk 5 segmenti (yön hesaplamasında kullanılanları) sarı ile vurgula
-            const pathWithDoor = [startPoint, ...pathResult];
-            for (let i = 0; i < Math.min(5, pathWithDoor.length - 1); i++) {
-                const p1 = pathWithDoor[i];
-                const p2 = pathWithDoor[i + 1];
-                
-                const line = document.createElementNS(ns, 'line');
-                line.setAttribute('x1', p1[0]);
-                line.setAttribute('y1', p1[1]);
-                line.setAttribute('x2', p2[0]);
-                line.setAttribute('y2', p2[1]);
-                line.setAttribute('stroke', '#ffff00');
-                line.setAttribute('stroke-width', '6');
-                line.setAttribute('stroke-linecap', 'round');
-                highlightGroup.appendChild(line);
-                
-                // Segment numarası
-                const midX = (p1[0] + p2[0]) / 2;
-                const midY = (p1[1] + p2[1]) / 2;
-                const text = document.createElementNS(ns, 'text');
-                text.setAttribute('x', midX);
-                text.setAttribute('y', midY - 5);
-                text.setAttribute('fill', '#ff0000');
-                text.setAttribute('font-size', '12');
-                text.setAttribute('font-weight', 'bold');
-                text.textContent = `S${i + 1}`;
-                highlightGroup.appendChild(text);
-            }
-            
-            // Path noktalarını daire ile işaretle (ilk 6 nokta = 5 segment)
-            pathWithDoor.slice(0, 6).forEach((p, idx) => {
-                const circle = document.createElementNS(ns, 'circle');
-                circle.setAttribute('cx', p[0]);
-                circle.setAttribute('cy', p[1]);
-                circle.setAttribute('r', idx === 0 ? '8' : '5');
-                circle.setAttribute('fill', idx === 0 ? '#ff0000' : '#ffff00');
-                circle.setAttribute('stroke', '#000');
-                circle.setAttribute('stroke-width', '1');
-                highlightGroup.appendChild(circle);
-            });
-            
-            svgElement.appendChild(highlightGroup);
-            console.log('Path highlight edildi');
-        }
-        
-        // Yön okunu çiz
-        function drawDirectionArrow() {
-            if (!svgElement) {
-                console.error('SVG element bulunamadı');
-                return;
-            }
-            
-            const ns = 'http://www.w3.org/2000/svg';
-            
-            // Eski oku sil
             const oldArrow = svgElement.querySelector('#direction-arrow-group');
             if (oldArrow) oldArrow.remove();
             
-            // SVG'deki grupların transform'unu al (Rooms veya Paths grubundan)
             const roomsGroup = svgElement.querySelector('g[id="Rooms"]') || 
                                svgElement.querySelector('g[inkscape\\:label="Rooms"]');
-            let groupTransform = '';
-            if (roomsGroup) {
-                groupTransform = roomsGroup.getAttribute('transform') || '';
-            }
+            let groupTransform = roomsGroup ? (roomsGroup.getAttribute('transform') || '') : '';
             
             const group = document.createElementNS(ns, 'g');
             group.setAttribute('id', 'direction-arrow-group');
-            // Aynı transform'u oka da uygula
-            if (groupTransform) {
-                group.setAttribute('transform', groupTransform);
-            }
+            if (groupTransform) group.setAttribute('transform', groupTransform);
             
-            const startX = targetParams.startX;
-            const startY = targetParams.startY;
-            const arrowLength = 80;
-            const endX = startX + targetParams.dirX * arrowLength;
-            const endY = startY + targetParams.dirY * arrowLength;
+            const startX = direction.startPoint[0];
+            const startY = direction.startPoint[1];
+            const arrowLength = 35;
+            const endX = startX + direction.directionVector[0] * arrowLength;
+            const endY = startY + direction.directionVector[1] * arrowLength;
             
-            console.log('Ok çiziliyor:', startX, startY, '->', endX, endY);
-            console.log('Transform:', groupTransform);
-            
-            // Glow efekti için filtre
-            const defs = document.createElementNS(ns, 'defs');
-            const filter = document.createElementNS(ns, 'filter');
-            filter.setAttribute('id', 'glow');
-            filter.setAttribute('x', '-50%');
-            filter.setAttribute('y', '-50%');
-            filter.setAttribute('width', '200%');
-            filter.setAttribute('height', '200%');
-            
-            const feGaussianBlur = document.createElementNS(ns, 'feGaussianBlur');
-            feGaussianBlur.setAttribute('stdDeviation', '4');
-            feGaussianBlur.setAttribute('result', 'coloredBlur');
-            filter.appendChild(feGaussianBlur);
-            
-            const feMerge = document.createElementNS(ns, 'feMerge');
-            const feMergeNode1 = document.createElementNS(ns, 'feMergeNode');
-            feMergeNode1.setAttribute('in', 'coloredBlur');
-            const feMergeNode2 = document.createElementNS(ns, 'feMergeNode');
-            feMergeNode2.setAttribute('in', 'SourceGraphic');
-            feMerge.appendChild(feMergeNode1);
-            feMerge.appendChild(feMergeNode2);
-            filter.appendChild(feMerge);
-            defs.appendChild(filter);
-            group.appendChild(defs);
-            
-            // Ok çizgisi - kalın ve parlak
+            // Ok çizgisi
             const line = document.createElementNS(ns, 'line');
             line.setAttribute('x1', startX);
             line.setAttribute('y1', startY);
             line.setAttribute('x2', endX);
             line.setAttribute('y2', endY);
-            line.setAttribute('stroke', '#00FF00');
-            line.setAttribute('stroke-width', '8');
+            line.setAttribute('stroke', '#00CC00');
+            line.setAttribute('stroke-width', '3');
             line.setAttribute('stroke-linecap', 'round');
-            line.setAttribute('filter', 'url(#glow)');
             group.appendChild(line);
             
-            // Ok ucu (polygon) - daha büyük
-            const angle = Math.atan2(targetParams.dirY, targetParams.dirX);
-            const headLen = 25;
-            const headAngle = Math.PI / 5;
+            // Ok ucu
+            const angle = Math.atan2(direction.directionVector[1], direction.directionVector[0]);
+            const headLen = 10;
+            const headAngle = Math.PI / 6;
             
             const hx1 = endX - headLen * Math.cos(angle - headAngle);
             const hy1 = endY - headLen * Math.sin(angle - headAngle);
@@ -401,86 +647,213 @@
             
             const head = document.createElementNS(ns, 'polygon');
             head.setAttribute('points', `${endX},${endY} ${hx1},${hy1} ${hx2},${hy2}`);
-            head.setAttribute('fill', '#00FF00');
-            head.setAttribute('filter', 'url(#glow)');
+            head.setAttribute('fill', '#00CC00');
             group.appendChild(head);
             
-            // Başlangıç noktası (daire) - daha büyük ve parlak
+            // Başlangıç noktası
             const circle = document.createElementNS(ns, 'circle');
             circle.setAttribute('cx', startX);
             circle.setAttribute('cy', startY);
-            circle.setAttribute('r', '15');
-            circle.setAttribute('fill', '#FF0000');
+            circle.setAttribute('r', '5');
+            circle.setAttribute('fill', '#FF3333');
             circle.setAttribute('stroke', '#FFFFFF');
-            circle.setAttribute('stroke-width', '4');
-            circle.setAttribute('filter', 'url(#glow)');
+            circle.setAttribute('stroke-width', '2');
             group.appendChild(circle);
             
-            // İç daire (pulse animasyonu için)
-            const innerCircle = document.createElementNS(ns, 'circle');
-            innerCircle.setAttribute('cx', startX);
-            innerCircle.setAttribute('cy', startY);
-            innerCircle.setAttribute('r', '8');
-            innerCircle.setAttribute('fill', '#FFFFFF');
-            group.appendChild(innerCircle);
+            // Portal hedefi varsa işaretle
+            if (segment.toPortal) {
+                const portalCircle = document.createElementNS(ns, 'circle');
+                portalCircle.setAttribute('cx', segment.toPortal.center[0]);
+                portalCircle.setAttribute('cy', segment.toPortal.center[1]);
+                portalCircle.setAttribute('r', '8');
+                portalCircle.setAttribute('fill', '#FF9800');
+                portalCircle.setAttribute('stroke', '#FFFFFF');
+                portalCircle.setAttribute('stroke-width', '2');
+                group.appendChild(portalCircle);
+                
+                // Portal ikonu (text)
+                const portalText = document.createElementNS(ns, 'text');
+                portalText.setAttribute('x', segment.toPortal.center[0]);
+                portalText.setAttribute('y', segment.toPortal.center[1] + 4);
+                portalText.setAttribute('text-anchor', 'middle');
+                portalText.setAttribute('font-size', '10');
+                portalText.setAttribute('fill', 'white');
+                portalText.textContent = segment.toPortal.portalType === 'Elev' ? '🛗' : '🚶';
+                group.appendChild(portalText);
+            }
             
             svgElement.appendChild(group);
-            console.log('Ok eklendi');
         }
         
-        // Belirli noktaya odaklan
-        function centerOnPoint(x, y) {
-            const container = document.getElementById('svgContainer');
-            const wrapper = document.getElementById('svgWrapper');
+        function highlightSegmentPath(segment) {
+            if (!svgElement || !segment.direction) return;
             
+            // Doğru katın path'lerini kullan
+            mapDirection.setCurrentFloor(segment.floor);
+            console.log(`Path highlight için kat ayarlandı: ${segment.floor}, ${mapDirection.paths?.length || 0} path`);
+            
+            const ns = 'http://www.w3.org/2000/svg';
+            const direction = segment.direction;
+            
+            const roomsGroup = svgElement.querySelector('g[id="Rooms"]');
+            let groupTransform = roomsGroup ? (roomsGroup.getAttribute('transform') || '') : '';
+            
+            const highlightGroup = document.createElementNS(ns, 'g');
+            highlightGroup.setAttribute('id', 'path-highlight-group');
+            if (groupTransform) highlightGroup.setAttribute('transform', groupTransform);
+            
+            // Path'i bulmak için başlangıç ve hedef noktalarını kullan
+            const startPoint = direction.startPoint;
+            const endPoint = direction.endPoint;
+            
+            if (startPoint && endPoint) {
+                console.log(`Path aranıyor: [${startPoint}] -> [${endPoint}]`);
+                const pathResult = mapDirection.findPathBetweenPoints(startPoint, endPoint);
+                console.log(`Path sonucu: ${pathResult ? pathResult.length + ' nokta' : 'null'}`);
+                
+                if (pathResult && pathResult.length >= 2) {
+                    const fullPath = [startPoint, ...pathResult];
+                    console.log(`Çizilecek path: ${fullPath.length} nokta`);
+                    
+                    for (let i = 0; i < fullPath.length - 1; i++) {
+                        const p1 = fullPath[i];
+                        const p2 = fullPath[i + 1];
+                        
+                        const line = document.createElementNS(ns, 'line');
+                        line.setAttribute('x1', p1[0]);
+                        line.setAttribute('y1', p1[1]);
+                        line.setAttribute('x2', p2[0]);
+                        line.setAttribute('y2', p2[1]);
+                        
+                        if (i < 5) {
+                            line.setAttribute('stroke', '#FF6600');
+                            line.setAttribute('stroke-width', '3');
+                            line.setAttribute('opacity', '0.9');
+                        } else {
+                            line.setAttribute('stroke', '#0066ff');
+                            line.setAttribute('stroke-width', '2');
+                            line.setAttribute('opacity', '0.5');
+                        }
+                        line.setAttribute('stroke-linecap', 'round');
+                        highlightGroup.appendChild(line);
+                    }
+                } else {
+                    console.warn(`Path bulunamadı, fallback çizgi çiziliyor`);
+                    // Fallback: doğrudan çizgi çiz
+                    const line = document.createElementNS(ns, 'line');
+                    line.setAttribute('x1', startPoint[0]);
+                    line.setAttribute('y1', startPoint[1]);
+                    line.setAttribute('x2', endPoint[0]);
+                    line.setAttribute('y2', endPoint[1]);
+                    line.setAttribute('stroke', '#ff0000');
+                    line.setAttribute('stroke-width', '2');
+                    line.setAttribute('stroke-dasharray', '5,5');
+                    line.setAttribute('opacity', '0.8');
+                    highlightGroup.appendChild(line);
+                }
+            }
+            
+            svgElement.appendChild(highlightGroup);
+        }
+        
+        // Eski tek-kat fonksiyonları (geriye uyumluluk)
+        function drawDirectionArrow() {
             if (!svgElement) return;
             
-            // Container boyutları
+            const ns = 'http://www.w3.org/2000/svg';
+            
+            const oldArrow = svgElement.querySelector('#direction-arrow-group');
+            if (oldArrow) oldArrow.remove();
+            
+            const roomsGroup = svgElement.querySelector('g[id="Rooms"]');
+            let groupTransform = roomsGroup ? (roomsGroup.getAttribute('transform') || '') : '';
+            
+            const group = document.createElementNS(ns, 'g');
+            group.setAttribute('id', 'direction-arrow-group');
+            if (groupTransform) group.setAttribute('transform', groupTransform);
+            
+            const startX = targetParams.startX;
+            const startY = targetParams.startY;
+            const arrowLength = 35;
+            const endX = startX + targetParams.dirX * arrowLength;
+            const endY = startY + targetParams.dirY * arrowLength;
+            
+            const line = document.createElementNS(ns, 'line');
+            line.setAttribute('x1', startX);
+            line.setAttribute('y1', startY);
+            line.setAttribute('x2', endX);
+            line.setAttribute('y2', endY);
+            line.setAttribute('stroke', '#00CC00');
+            line.setAttribute('stroke-width', '3');
+            line.setAttribute('stroke-linecap', 'round');
+            group.appendChild(line);
+            
+            const angle = Math.atan2(targetParams.dirY, targetParams.dirX);
+            const headLen = 10;
+            const headAngle = Math.PI / 6;
+            
+            const hx1 = endX - headLen * Math.cos(angle - headAngle);
+            const hy1 = endY - headLen * Math.sin(angle - headAngle);
+            const hx2 = endX - headLen * Math.cos(angle + headAngle);
+            const hy2 = endY - headLen * Math.sin(angle + headAngle);
+            
+            const head = document.createElementNS(ns, 'polygon');
+            head.setAttribute('points', `${endX},${endY} ${hx1},${hy1} ${hx2},${hy2}`);
+            head.setAttribute('fill', '#00CC00');
+            group.appendChild(head);
+            
+            const circle = document.createElementNS(ns, 'circle');
+            circle.setAttribute('cx', startX);
+            circle.setAttribute('cy', startY);
+            circle.setAttribute('r', '5');
+            circle.setAttribute('fill', '#FF3333');
+            circle.setAttribute('stroke', '#FFFFFF');
+            circle.setAttribute('stroke-width', '2');
+            group.appendChild(circle);
+            
+            svgElement.appendChild(group);
+        }
+        
+        async function highlightUsedPaths() {
+            // Eski fonksiyon - artık kullanılmıyor
+        }
+        
+        // ==================== ZOOM/PAN ====================
+        function centerOnPoint(x, y) {
+            const container = document.getElementById('svgContainer');
+            if (!svgElement) return;
+            
             const containerWidth = container.clientWidth;
             const containerHeight = container.clientHeight;
-            
-            // SVG boyutları (viewBox'tan bağımsız, render edilmiş boyut)
             const svgRect = svgElement.getBoundingClientRect();
             
-            // Transform: translate(-155.17664,-527.47596)
             const translateX = -155.17664;
             const translateY = -527.47596;
             
-            // Transform sonrası koordinatlar
             const transformedX = x + translateX;
             const transformedY = y + translateY;
             
-            // Tüm haritayı gösterecek başlangıç scale
             scale = 0.8;
             
-            // viewBox: -20 -20 700 850 kullanarak
             const vbX = -20, vbY = -20, vbWidth = 700, vbHeight = 850;
-            
-            // SVG koordinatlarını wrapper koordinatlarına çevir
             const svgScale = Math.min(svgRect.width / vbWidth, svgRect.height / vbHeight);
             const pointX = (transformedX - vbX) * svgScale * scale;
             const pointY = (transformedY - vbY) * svgScale * scale;
             
-            // Merkeze al
             panX = containerWidth / 2 - pointX;
             panY = containerHeight / 2 - pointY;
-            
-            console.log(`centerOnPoint: (${x}, ${y}) -> transform(${transformedX.toFixed(2)}, ${transformedY.toFixed(2)})`);
             
             updateTransform();
         }
         
-        // Transform güncelle
         function updateTransform() {
             const wrapper = document.getElementById('svgWrapper');
             wrapper.style.transform = `translate(${panX}px, ${panY}px) scale(${scale})`;
         }
         
-        // Zoom/Pan kurulumu
         function setupZoomPan() {
             const container = document.getElementById('svgContainer');
             
-            // Mouse wheel zoom
             container.addEventListener('wheel', (e) => {
                 e.preventDefault();
                 const delta = e.deltaY > 0 ? 0.9 : 1.1;
@@ -488,7 +861,6 @@
                 const mouseX = e.clientX - rect.left;
                 const mouseY = e.clientY - rect.top;
                 
-                // Zoom merkezi mouse pozisyonu
                 const newScale = scale * delta;
                 if (newScale < 0.1 || newScale > 10) return;
                 
@@ -499,7 +871,6 @@
                 updateTransform();
             });
             
-            // Pan (sürükleme)
             container.addEventListener('mousedown', (e) => {
                 isPanning = true;
                 startPanX = e.clientX - panX;
@@ -524,9 +895,8 @@
                 container.style.cursor = 'grab';
             });
             
-            // Touch desteği
+            // Touch support
             let lastTouchDist = 0;
-            let lastTouchX = 0, lastTouchY = 0;
             
             container.addEventListener('touchstart', (e) => {
                 if (e.touches.length === 1) {
@@ -552,8 +922,7 @@
                         e.touches[0].clientX - e.touches[1].clientX,
                         e.touches[0].clientY - e.touches[1].clientY
                     );
-                    const delta = dist / lastTouchDist;
-                    scale *= delta;
+                    scale *= dist / lastTouchDist;
                     if (scale < 0.1) scale = 0.1;
                     if (scale > 10) scale = 10;
                     lastTouchDist = dist;
@@ -565,23 +934,24 @@
                 isPanning = false;
             });
         }
-        
-        // Sayfa yüklendiğinde SVG'yi yükle
-        document.addEventListener('DOMContentLoaded', loadSVG);
-        
-        let directionMatches = false;
-        let isLoading = false;
-        let activeAScene = null; // AR scene referansı
-        let compassListeners = { absolute: null, webkit: null }; // Listener referansları
 
-        document.addEventListener('DOMContentLoaded', function () {
+        // ==================== EVENT LISTENERS ====================
+        function setupEventListeners() {
             const centerButton = document.querySelector('.center-button');
             const rightButton = document.querySelector('.right-button');
-            const okButton = document.querySelector('.btn-ok');
+            const okButton = document.getElementById('popupOkBtn');
+            const portalConfirmBtn = document.getElementById('portalConfirmBtn');
+            const nextStepBtn = document.getElementById('nextStepBtn');
             const bottomContainer = document.querySelector('.bottom-container');
             const popup = document.getElementById('popup');
 
             centerButton.addEventListener('click', function () {
+                // AR butonu zamanlayıcısını durdur
+                if (arButtonTimer) {
+                    clearTimeout(arButtonTimer);
+                    arButtonTimer = null;
+                }
+                
                 activeAScene = document.createElement('a-scene');
                 activeAScene.setAttribute('vr-mode-ui', 'enabled: false');
                 activeAScene.style.position = 'absolute';
@@ -595,7 +965,9 @@
                 centerButton.style.display = 'none';
                 rightButton.style.display = 'block';
                 
-                // Pusula dinlemeyi başlat
+                // Sonraki adım butonunu gizle (AR modunda)
+                nextStepBtn.classList.add('hidden');
+                
                 startCompassListener((compass, beta) => {
                     showArrow(directionToTurn, compass, beta);
                 });
@@ -604,21 +976,54 @@
             rightButton.addEventListener('click', function () {
                 stopARAndCleanup();
                 bottomContainer.style.height = '100%';
-                centerButton.style.display = 'none';
                 rightButton.style.display = 'none';
+                
+                // AR butonunu zamanlayıcı ile tekrar göster
+                showARButtonWithTimer();
+                
+                // Sonraki adım butonunu göster
+                updateSegmentUI();
             });
 
             okButton.addEventListener('click', function () {
-                stopARAndCleanup();
-                bottomContainer.style.height = '100%';
-                centerButton.style.display = 'none';
-                rightButton.style.display = 'none';
+                popup.style.display = 'none';
+                
+                // Çoklu kat modunda sonraki segmente geç
+                if (routeData && routeData.segments) {
+                    if (currentSegmentIndex < routeData.segments.length - 1) {
+                        goToNextSegment();
+                    } else {
+                        // Tüm rotalar tamamlandı, ana sayfaya dön
+                        window.location.href = 'index.html';
+                    }
+                } else {
+                    stopARAndCleanup();
+                    bottomContainer.style.height = '100%';
+                }
             });
-        });
+            
+            // Sonraki adım butonu
+            nextStepBtn.addEventListener('click', function() {
+                if (routeData && routeData.segments && currentSegmentIndex < routeData.segments.length - 1) {
+                    goToNextSegment();
+                }
+            });
+            
+            // Portal onay butonu
+            portalConfirmBtn.addEventListener('click', function() {
+                hidePortalOverlay();
+                goToNextSegment();
+                
+                // AR butonunu göster
+                const bottomContainer = document.querySelector('.bottom-container');
+                const centerButton = document.querySelector('.center-button');
+                bottomContainer.style.height = '100%';
+                centerButton.style.display = 'block';
+            });
+        }
         
-        // AR ve kamerayı temizle
+        // ==================== AR FUNCTIONS ====================
         function stopARAndCleanup() {
-            // DeviceOrientation listener'larını kaldır
             if (compassListeners.absolute) {
                 window.removeEventListener("deviceorientationabsolute", compassListeners.absolute);
                 compassListeners.absolute = null;
@@ -628,86 +1033,51 @@
                 compassListeners.webkit = null;
             }
             
-            // Kamera stream'lerini durdur
             stopAllCameraStreams();
             
-            // AR Scene'i kaldır
             if (activeAScene) {
                 activeAScene.remove();
                 activeAScene = null;
             }
             
-            // Sayfadaki tüm a-scene'leri de kaldır (güvenlik için)
             document.querySelectorAll('a-scene').forEach(scene => scene.remove());
             
-            // Popup'ı gizle
-            const popup = document.getElementById('popup');
-            if (popup) {
-                popup.style.display = 'none';
-            }
-            
-            // Progress'i sıfırla
             const progressCircle = document.querySelector('.progress');
             if (progressCircle) {
                 progressCircle.style.strokeDashoffset = '283';
             }
             
-            // Container'ı küçült
             const container = document.querySelector('.container');
             if (container) {
                 container.classList.remove('grow');
             }
             
-            // Okları gizle
             hideAllArrows();
-            
-            console.log('AR ve kamera temizlendi');
         }
         
-        // Tüm kamera stream'lerini durdur
         function stopAllCameraStreams() {
-            // Video elementlerinden stream'leri durdur
             document.querySelectorAll('video').forEach(video => {
                 if (video.srcObject) {
-                    video.srcObject.getTracks().forEach(track => {
-                        track.stop();
-                        console.log('Video track durduruldu:', track.kind);
-                    });
+                    video.srcObject.getTracks().forEach(track => track.stop());
                     video.srcObject = null;
                 }
                 video.pause();
                 video.remove();
             });
-            
-            // Navigator'dan aktif stream'leri durdur
-            if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-                navigator.mediaDevices.getUserMedia({ video: true })
-                    .then(stream => {
-                        stream.getTracks().forEach(track => track.stop());
-                    })
-                    .catch(() => {}); // Hata varsa görmezden gel
-            }
         }
         
-        // Tüm okları gizle
         function hideAllArrows() {
-            const leftArrow = document.getElementById('left-arrow');
-            const rightArrow = document.getElementById('right-arrow');
-            const upArrow = document.getElementById('up-arrow');
-            const upPerspectiveArrow = document.getElementById('up-arrow-perspective');
-            
-            if (leftArrow) leftArrow.classList.remove('fade-in');
-            if (rightArrow) rightArrow.classList.remove('fade-in');
-            if (upArrow) upArrow.classList.remove('fade-in');
-            if (upPerspectiveArrow) upPerspectiveArrow.classList.remove('fade-in');
+            const arrows = ['left-arrow', 'right-arrow', 'up-arrow', 'up-arrow-perspective'];
+            arrows.forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.classList.remove('fade-in');
+            });
         }
 
-        // Yönlendirme oklarını ve doğru yön indikatörünü gösterir
         function showArrow(directionToTurn, direction, beta) {
             const arScene = document.querySelector('a-scene');
-            if (!arScene) {
-                return;
-            }
+            if (!arScene) return;
+            
             const leftArrow = document.getElementById('left-arrow');
             const rightArrow = document.getElementById('right-arrow');
             const upArrow = document.getElementById('up-arrow');
@@ -716,7 +1086,6 @@
             const container = document.querySelector('.container');
             const progressCircle = document.querySelector('.progress');
 
-            // Okların görünürlüğünü sıfırlama
             leftArrow.classList.remove('fade-in', 'fade-out');
             rightArrow.classList.remove('fade-in', 'fade-out');
             upArrow.classList.remove('fade-in', 'fade-out');
@@ -725,11 +1094,9 @@
             const upperBound = (directionToTurn + 20) % 360;
             const lowerBound = (directionToTurn - 20 + 360) % 360;
 
-            // Eğer yön directionToTurn ile ±20 derece arasındaysa
             if ((direction <= upperBound && direction >= lowerBound) ||
                 (lowerBound > upperBound && (direction >= lowerBound || direction <= upperBound))) {
 
-                // Yön doğru, okları kontrol et
                 if (beta < 30) {
                     upPerspectiveArrow.classList.add('fade-in');
                     upArrow.classList.remove('fade-in');
@@ -748,12 +1115,10 @@
                     const currentOffset = parseFloat(getComputedStyle(progressCircle).strokeDashoffset);
 
                     if (currentOffset === 0) {
-                        console.log('Animasyon tamamlandı!');
+                        console.log('Segment tamamlandı!');
                         
-                        // Önce kamerayı ve AR'ı tamamen durdur
                         stopAllCameraStreams();
                         
-                        // Listener'ları kaldır
                         if (compassListeners.absolute) {
                             window.removeEventListener("deviceorientationabsolute", compassListeners.absolute);
                             compassListeners.absolute = null;
@@ -763,18 +1128,32 @@
                             compassListeners.webkit = null;
                         }
                         
-                        // A-Scene'i kaldır (kamera tamamen kapansın)
                         if (activeAScene) {
                             activeAScene.remove();
                             activeAScene = null;
                         }
                         document.querySelectorAll('a-scene').forEach(scene => scene.remove());
                         
-                        // Okları gizle
                         hideAllArrows();
                         
-                        // Popup'ı göster
-                        popup.style.display = 'block';
+                        // Çoklu kat modunda sonraki segmente geç
+                        if (routeData && routeData.segments && currentSegmentIndex < routeData.segments.length - 1) {
+                            // Sonraki segment portal mı?
+                            const nextSegment = routeData.segments[currentSegmentIndex + 1];
+                            if (nextSegment && nextSegment.type === 'portal_transition') {
+                                goToNextSegment();
+                            } else {
+                                // Normal segment - popup göster
+                                const message = document.getElementById('popupMessage');
+                                const btnText = document.getElementById('popupBtnText');
+                                message.textContent = 'Bu bölüm tamamlandı! Devam edin.';
+                                btnText.textContent = 'Devam Et';
+                                popup.style.display = 'block';
+                            }
+                        } else {
+                            // Son segment veya tek kat modu
+                            popup.style.display = 'block';
+                        }
                     } else {
                         requestAnimationFrame(monitorAnimation);
                     }
@@ -783,7 +1162,6 @@
                 requestAnimationFrame(monitorAnimation);
 
             } else {
-                // Sola veya sağa dönüş gerekli
                 const clockwise = (directionToTurn - direction + 360) % 360;
                 const counterclockwise = (direction - directionToTurn + 360) % 360;
 
@@ -810,7 +1188,6 @@
                 return;
             }
             
-            // Önceki listener'ları temizle
             if (compassListeners.absolute) {
                 window.removeEventListener("deviceorientationabsolute", compassListeners.absolute);
             }
@@ -819,9 +1196,7 @@
             }
             
             compassListeners.absolute = (e) => {
-                if (!e.absolute || e.alpha == null || e.beta == null || e.gamma == null) {
-                    return;
-                }
+                if (!e.absolute || e.alpha == null || e.beta == null || e.gamma == null) return;
                 let compass = -(e.alpha + e.beta * e.gamma / 90);
                 compass -= Math.floor(compass / 360) * 360;
                 callback(compass, e.beta);
@@ -842,15 +1217,9 @@
             if (typeof DeviceOrientationEvent.requestPermission === "function") {
                 DeviceOrientationEvent.requestPermission()
                     .then(response => {
-                        if (response === "granted") {
-                            addListeners();
-                        } else {
-                            console.warn("Permission for DeviceOrientationEvent not granted");
-                        }
+                        if (response === "granted") addListeners();
                     })
-                    .catch(error => {
-                        console.error("Error requesting permission:", error);
-                    });
+                    .catch(console.error);
             } else {
                 addListeners();
             }

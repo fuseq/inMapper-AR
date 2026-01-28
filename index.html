@@ -11,14 +11,55 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <title>Çok Katlı Navigasyon</title>
     <style>
-        .floor-selector {
+        /* Satır düzeni: Kat + Birim aynı satırda */
+        .selection-row {
             display: flex;
             gap: 10px;
-            margin-bottom: 15px;
+            margin-bottom: 12px;
+            align-items: flex-end;
         }
-        .floor-selector .input-group {
+        .selection-row .floor-group {
+            flex: 0 0 100px;
+            min-width: 0;
+        }
+        .selection-row .room-group {
             flex: 1;
+            min-width: 0;
         }
+        .selection-row label {
+            display: block;
+            font-size: 13px;
+            margin-bottom: 4px;
+            color: #555;
+            white-space: nowrap;
+        }
+        .selection-row select {
+            width: 100%;
+            padding: 10px 8px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 14px;
+            background: white;
+            box-sizing: border-box;
+        }
+        
+        /* Mobil için daha dar kat seçici */
+        @media (max-width: 480px) {
+            .selection-row {
+                gap: 8px;
+            }
+            .selection-row .floor-group {
+                flex: 0 0 80px;
+            }
+            .selection-row select {
+                padding: 8px 6px;
+                font-size: 13px;
+            }
+            .selection-row label {
+                font-size: 11px;
+            }
+        }
+        
         .floor-badge {
             display: inline-block;
             padding: 2px 8px;
@@ -108,34 +149,36 @@
 
     <h2 style="text-align: center; margin-bottom: 20px;">🏢 Çok Katlı Navigasyon</h2>
 
-    <!-- Kat Seçimi -->
-    <div class="floor-selector">
-        <div class="input-group">
-            <label for="startFloor">Başlangıç Katı:</label>
+    <!-- Başlangıç: Kat + Birim aynı satırda -->
+    <div class="selection-row">
+        <div class="floor-group">
+            <label for="startFloor">Kat:</label>
             <select id="startFloor">
-                <option value="">-- Yükleniyor --</option>
+                <option value="">--</option>
             </select>
         </div>
-        <div class="input-group">
-            <label for="endFloor">Hedef Katı:</label>
-            <select id="endFloor">
-                <option value="">-- Yükleniyor --</option>
+        <div class="room-group">
+            <label for="startRoom">Başlangıç Birimi:</label>
+            <select id="startRoom">
+                <option value="">-- Önce kat seçin --</option>
             </select>
         </div>
     </div>
 
-    <!-- Oda Seçimi -->
-    <div class="input-group">
-        <label for="startRoom">Başlangıç Birimi:</label>
-        <select id="startRoom">
-            <option value="">-- Önce kat seçin --</option>
-        </select>
-    </div>
-    <div class="input-group">
-        <label for="endRoom">Hedef Birimi:</label>
-        <select id="endRoom">
-            <option value="">-- Önce kat seçin --</option>
-        </select>
+    <!-- Hedef: Kat + Birim aynı satırda -->
+    <div class="selection-row">
+        <div class="floor-group">
+            <label for="endFloor">Kat:</label>
+            <select id="endFloor">
+                <option value="">--</option>
+            </select>
+        </div>
+        <div class="room-group">
+            <label for="endRoom">Hedef Birimi:</label>
+            <select id="endRoom">
+                <option value="">-- Önce kat seçin --</option>
+            </select>
+        </div>
     </div>
 
     <!-- Rota Önizleme -->
@@ -274,15 +317,15 @@
             const endSelect = document.getElementById('endFloor');
             
             const floorLabels = {
-                '0': 'Kat 0 (Zemin)',
-                '-1': 'Kat -1',
-                '-2': 'Kat -2',
-                '1': 'Kat 1',
-                '2': 'Kat 2'
+                '0': '0',
+                '-1': '-1',
+                '-2': '-2',
+                '1': '1',
+                '2': '2'
             };
             
-            startSelect.innerHTML = '<option value="">-- Kat Seçin --</option>';
-            endSelect.innerHTML = '<option value="">-- Kat Seçin --</option>';
+            startSelect.innerHTML = '<option value="">Seç</option>';
+            endSelect.innerHTML = '<option value="">Seç</option>';
             
             floors.forEach(floor => {
                 const label = floorLabels[floor] || `Kat ${floor}`;

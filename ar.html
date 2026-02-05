@@ -316,6 +316,7 @@
                 endRoom: params.get('endRoom') || '',
                 startFloor: params.get('startFloor') || '0',
                 endFloor: params.get('endFloor') || '0',
+                building: params.get('building') || 'zorlu', // Bina parametresi
                 // Eski tek-kat uyumluluk
                 angle: parseFloat(params.get('angle')) || 0,
                 compass: params.get('compass') || 'Kuzey',
@@ -324,6 +325,21 @@
                 dirX: parseFloat(params.get('dirX')) || 0,
                 dirY: parseFloat(params.get('dirY')) || 1
             };
+        }
+        
+        // Bina bazlı path
+        function getBuildingPath() {
+            return `./${targetParams.building}`;
+        }
+        
+        // Bina bazlı viewBox ayarları
+        const BUILDING_VIEWBOX = {
+            'zorlu': '-20 -20 700 850',
+            'ISG': '0 0 4418 3557'
+        };
+        
+        function getBuildingViewBox() {
+            return BUILDING_VIEWBOX[targetParams.building] || BUILDING_VIEWBOX['zorlu'];
         }
         
         const targetParams = getQueryParams();
@@ -368,10 +384,10 @@
 
         // ==================== MULTI FLOOR MODE ====================
         async function initMultiFloorMode() {
-            console.log('Çok kat modu');
+            console.log('Çok kat modu - Bina:', targetParams.building);
             
-            // Tüm katları yükle
-            await mapDirection.loadAllFloors('./zorlu');
+            // Tüm katları yükle (dinamik bina path)
+            await mapDirection.loadAllFloors(getBuildingPath());
             
             // İlk segment ile başla
             currentSegmentIndex = 0;
@@ -532,7 +548,7 @@
         // ==================== SVG LOADING ====================
         async function loadFloorSVG(floorId, segment) {
             try {
-                const response = await fetch(`./zorlu/${floorId}.svg`);
+                const response = await fetch(`${getBuildingPath()}/${floorId}.svg`);
                 if (!response.ok) throw new Error(`SVG yüklenemedi: ${floorId}`);
                 
                 const content = await response.text();
@@ -544,7 +560,7 @@
                 svgElement.style.height = '100%';
                 svgElement.removeAttribute('width');
                 svgElement.removeAttribute('height');
-                svgElement.setAttribute('viewBox', '-20 -20 700 850');
+                svgElement.setAttribute('viewBox', getBuildingViewBox());
                 
                 const wrapper = document.getElementById('svgWrapper');
                 wrapper.innerHTML = '';
@@ -571,7 +587,7 @@
         // Eski tek-kat SVG yükleyici
         async function loadSVGOld() {
             try {
-                let response = await fetch('./zorlu/0.svg');
+                let response = await fetch(`${getBuildingPath()}/0.svg`);
                 if (!response.ok) {
                     response = await fetch('./sample.svg');
                 }
@@ -585,7 +601,7 @@
                     svgElement.style.height = '100%';
                     svgElement.removeAttribute('width');
                     svgElement.removeAttribute('height');
-                    svgElement.setAttribute('viewBox', '-20 -20 700 850');
+                    svgElement.setAttribute('viewBox', getBuildingViewBox());
                     
                     const wrapper = document.getElementById('svgWrapper');
                     wrapper.appendChild(svgElement);
@@ -819,6 +835,22 @@
         }
         
         // ==================== ZOOM/PAN ====================
+        
+        // Bina bazlı transform ayarları
+        const BUILDING_TRANSFORM = {
+            'zorlu': { translateX: -155.17664, translateY: -527.47596, scale: 0.8 },
+            'ISG': { translateX: 0, translateY: 0, scale: 0.15 }
+        };
+        
+        function getBuildingTransform() {
+            return BUILDING_TRANSFORM[targetParams.building] || BUILDING_TRANSFORM['zorlu'];
+        }
+        
+        function parseViewBox(viewBoxStr) {
+            const parts = viewBoxStr.split(' ').map(parseFloat);
+            return { x: parts[0], y: parts[1], width: parts[2], height: parts[3] };
+        }
+        
         function centerOnPoint(x, y) {
             const container = document.getElementById('svgContainer');
             if (!svgElement) return;
@@ -827,18 +859,17 @@
             const containerHeight = container.clientHeight;
             const svgRect = svgElement.getBoundingClientRect();
             
-            const translateX = -155.17664;
-            const translateY = -527.47596;
+            const transform = getBuildingTransform();
+            const viewBox = parseViewBox(getBuildingViewBox());
             
-            const transformedX = x + translateX;
-            const transformedY = y + translateY;
+            const transformedX = x + transform.translateX;
+            const transformedY = y + transform.translateY;
             
-            scale = 0.8;
+            scale = transform.scale;
             
-            const vbX = -20, vbY = -20, vbWidth = 700, vbHeight = 850;
-            const svgScale = Math.min(svgRect.width / vbWidth, svgRect.height / vbHeight);
-            const pointX = (transformedX - vbX) * svgScale * scale;
-            const pointY = (transformedY - vbY) * svgScale * scale;
+            const svgScale = Math.min(svgRect.width / viewBox.width, svgRect.height / viewBox.height);
+            const pointX = (transformedX - viewBox.x) * svgScale * scale;
+            const pointY = (transformedY - viewBox.y) * svgScale * scale;
             
             panX = containerWidth / 2 - pointX;
             panY = containerHeight / 2 - pointY;
@@ -1228,3 +1259,4 @@
 </body>
 
 </html>
+

@@ -18,34 +18,45 @@ class MapDirection {
         this.currentFloor = null;
     }
 
-    // LayerId <-> FloorId dönüşüm tabloları (sadece 0, -1, -2 katları aktif)
-    static LAYER_TO_FLOOR = { '0': '0', '1': '-1', '2': '-2' };
-    static FLOOR_TO_LAYER = { '0': '0', '-1': '1', '-2': '2' };
+    // LayerId <-> FloorId dönüşüm tabloları (tüm katlar için)
+    static LAYER_TO_FLOOR = { '0': '0', '1': '-1', '2': '-2', '3': '-3', '-1': '-1', '-2': '-2', '-3': '-3' };
+    static FLOOR_TO_LAYER = { '0': '0', '-1': '1', '-2': '2', '-3': '3', '1': '1', '2': '2', '3': '3' };
 
     /**
      * Tüm katları ve portalları yükle
      */
     async loadAllFloors(basePath = './zorlu') {
-        console.log('Tüm katlar yükleniyor...');
+        console.log('Tüm katlar yükleniyor... Base path:', basePath);
+        
+        // Mevcut verileri temizle
+        this.floors.clear();
+        this.floorNames = [];
+        this.portals = [];
         
         // 1. Portal verilerini yükle
         await this.loadPortals(`${basePath}/portals.json`);
         
-        // 2. Tüm kat SVG'lerini yükle (sadece 0, -1, -2 katları)
-        const floorIds = ['0', '-1', '-2'];
+        // 2. Tüm olası kat ID'lerini dene (hem pozitif hem negatif katlar)
+        // Zorlu: 0, -1, -2, -3
+        // ISG: 0, 1, 2, 3
+        const possibleFloorIds = ['0', '1', '2', '3', '-1', '-2', '-3'];
         
-        for (const floorId of floorIds) {
+        for (const floorId of possibleFloorIds) {
             try {
                 const response = await fetch(`${basePath}/${floorId}.svg`);
                 if (response.ok) {
                     const content = await response.text();
                     this.loadFloorSVG(floorId, content);
                     this.floorNames.push(floorId);
+                    console.log(`Kat ${floorId} yüklendi`);
                 }
             } catch (e) {
-                console.log(`Kat ${floorId} yüklenemedi:`, e);
+                // Bu kat mevcut değil, sessizce atla
             }
         }
+        
+        // Katları sırala (sayısal olarak)
+        this.floorNames.sort((a, b) => parseInt(a) - parseInt(b));
         
         console.log(`Toplam ${this.floorNames.length} kat yüklendi:`, this.floorNames);
         
@@ -110,9 +121,10 @@ class MapDirection {
     calculatePortalCoordinates() {
         console.log('Portal koordinatları hesaplanıyor...');
         
+        // Stop çiftlerini topla (aynı kat içi teleport için)
+        const stopPairs = new Map(); // key: "floorId-stopNumber", value: { A: portal, B: portal }
+        
         this.portals.forEach(portal => {
-            if (portal.Status !== 'On') return;
-            
             // Yeni format: floorId direkt kullanılıyor (eski format: layerId dönüşümü gerekiyordu)
             const floorId = portal.floorId || this.layerIdToFloorId(portal.layerId);
             const floorData = this.floors.get(floorId);
@@ -126,6 +138,8 @@ class MapDirection {
             const portalInfo = this.parsePortalId(portal.id);
             
             let center = null;
+            let lineCoords = null; // Stop line'ları için koordinatlar
+            let foundElement = null;
             
             // 1. Önce Portals grubunda ara
             const portalsGroup = this.findGroupInSVG(floorData.svgElement, 'Portals');
@@ -133,6 +147,7 @@ class MapDirection {
                 const element = portalsGroup.querySelector(`#${CSS.escape(portal.id)}`);
                 if (element) {
                     center = this.getLineCenter(element) || this.getElementCenter(element);
+                    foundElement = element;
                 }
             }
             
@@ -141,6 +156,7 @@ class MapDirection {
                 const element = this.findElementById(floorData.svgElement, portal.id);
                 if (element) {
                     center = this.getLineCenter(element) || this.getElementCenter(element);
+                    foundElement = element;
                 }
             }
             
@@ -155,6 +171,17 @@ class MapDirection {
                 }
             }
             
+            // Stop line'ları için tam koordinatları al (path olarak kullanmak için)
+            if (foundElement && portalInfo.portalType === 'Stop') {
+                const x1 = parseFloat(foundElement.getAttribute('x1'));
+                const y1 = parseFloat(foundElement.getAttribute('y1'));
+                const x2 = parseFloat(foundElement.getAttribute('x2'));
+                const y2 = parseFloat(foundElement.getAttribute('y2'));
+                if (!isNaN(x1) && !isNaN(y1) && !isNaN(x2) && !isNaN(y2)) {
+                    lineCoords = { x1, y1, x2, y2 };
+                }
+            }
+            
             if (!center) {
                 console.log(`Portal ${portal.id} (Kat ${floorId}) için koordinat bulunamadı`);
                 return;
@@ -164,20 +191,67 @@ class MapDirection {
             // portalInfo.targetFloor zaten floorId formatında
             const targetFloorId = portalInfo.targetFloor;
             
-            floorData.portals.push({
+            const portalData = {
                 ...portal,
                 ...portalInfo,
                 targetFloorId: targetFloorId,
                 center: center,
+                lineCoords: lineCoords, // Stop'lar için line koordinatları
                 floor: floorId
-            });
+            };
+            
+            // Stop tipi portal ise çiftleri topla (Status ne olursa olsun koordinat al)
+            if (portalInfo.portalType === 'Stop') {
+                const stopKey = `${floorId}-${portalInfo.portalNumber}`;
+                if (!stopPairs.has(stopKey)) {
+                    stopPairs.set(stopKey, { A: null, B: null });
+                }
+                const pair = stopPairs.get(stopKey);
+                if (targetFloorId === 'A') {
+                    pair.A = portalData;
+                } else if (targetFloorId === 'B') {
+                    pair.B = portalData;
+                }
+            }
+            
+            // Sadece Status 'On' olan portalleri normal portal listesine ekle (kat geçişleri için)
+            if (portal.Status === 'On' && portalInfo.portalType !== 'Stop') {
+                floorData.portals.push(portalData);
+            }
+        });
+        
+        // Stop çiftlerini floorData.stopTeleports'a kaydet
+        stopPairs.forEach((pair, key) => {
+            const [floorId, stopNumber] = key.split('-');
+            const floorData = this.floors.get(floorId);
+            if (!floorData) return;
+            
+            if (!floorData.stopTeleports) {
+                floorData.stopTeleports = [];
+            }
+            
+            if (pair.A && pair.B && pair.A.center && pair.B.center) {
+                floorData.stopTeleports.push({
+                    stopNumber: stopNumber,
+                    A: pair.A,
+                    B: pair.B,
+                    // A'nın Status'u On ise A->B geçişi aktif
+                    aToB: pair.A.Status === 'On',
+                    // B'nin Status'u On ise B->A geçişi aktif
+                    bToA: pair.B.Status === 'On'
+                });
+                console.log(`Stop.${stopNumber} çifti bulundu (Kat ${floorId}): A->B=${pair.A.Status === 'On'}, B->A=${pair.B.Status === 'On'}`);
+            }
         });
         
         // Portal sayılarını göster
         this.floors.forEach((data, floorId) => {
-            console.log(`Kat ${floorId}: ${data.portals.length} portal koordinatı bulundu`);
+            console.log(`Kat ${floorId}: ${data.portals.length} portal, ${(data.stopTeleports || []).length} stop teleport çifti`);
             if (data.portals.length > 0) {
-                console.log(`  Örnekler:`, data.portals.slice(0, 5).map(p => `${p.id} -> Kat ${p.targetFloorId}`));
+                console.log(`  Portallar:`, data.portals.slice(0, 5).map(p => `${p.id} -> Kat ${p.targetFloorId}`));
+            }
+            if (data.stopTeleports && data.stopTeleports.length > 0) {
+                console.log(`  Stop'lar:`, data.stopTeleports.map(s => `Stop.${s.stopNumber} (A->B:${s.aToB}, B->A:${s.bToA})`));
             }
         });
     }
@@ -1247,6 +1321,157 @@ class MapDirection {
                 graph.get(id2).push({ node: id1, dist });
             }
         });
+        
+        // Stop teleport'ları sanal edge olarak ekle (aynı kat içi ışınlanma)
+        // Not: Stop line'ları Portals grubunda, Paths grubunda değil - bu yüzden hem path hem teleport olarak ekliyoruz
+        const currentFloorData = this.floors.get(this.currentFloor);
+        
+        // Path düğümlerinin sayısını kaydet (Stop'ları eklemeden önce)
+        const pathNodeCountBeforeStops = nodes.length;
+        
+        // En yakın path düğümünü bulma fonksiyonu (mesafe sınırı yok - en yakını bul)
+        const findNearestPathNode = (x, y) => {
+            let nearestId = null;
+            let nearestDist = Infinity;
+            
+            // Sadece path düğümlerinde ara (Stop düğümlerinde değil)
+            for (let i = 0; i < pathNodeCountBeforeStops; i++) {
+                const node = nodes[i];
+                const dist = Math.sqrt(Math.pow(node.x - x, 2) + Math.pow(node.y - y, 2));
+                if (dist < nearestDist) {
+                    nearestDist = dist;
+                    nearestId = node.id;
+                }
+            }
+            return { nodeId: nearestId, dist: nearestDist };
+        };
+        
+        if (currentFloorData && currentFloorData.stopTeleports) {
+            currentFloorData.stopTeleports.forEach(stop => {
+                // Stop A line'ının koordinatları (SVG'den)
+                const aLine = stop.A;
+                const bLine = stop.B;
+                
+                // Stop line'larını graph'a path segmenti olarak ekle
+                let aLineNodes = [];
+                let bLineNodes = [];
+                
+                if (aLine.lineCoords) {
+                    const aId1 = getNodeId(aLine.lineCoords.x1, aLine.lineCoords.y1);
+                    const aId2 = getNodeId(aLine.lineCoords.x2, aLine.lineCoords.y2);
+                    aLineNodes = [aId1, aId2];
+                    if (aId1 !== aId2) {
+                        const dist = Math.sqrt(Math.pow(aLine.lineCoords.x2 - aLine.lineCoords.x1, 2) + 
+                                              Math.pow(aLine.lineCoords.y2 - aLine.lineCoords.y1, 2));
+                        if (!graph.get(aId1).find(e => e.node === aId2)) {
+                            graph.get(aId1).push({ node: aId2, dist });
+                        }
+                        if (!graph.get(aId2).find(e => e.node === aId1)) {
+                            graph.get(aId2).push({ node: aId1, dist });
+                        }
+                    }
+                    
+                    // Stop A line uç noktalarını en yakın path düğümüne bağla
+                    const nearest1 = findNearestPathNode(aLine.lineCoords.x1, aLine.lineCoords.y1);
+                    const nearest2 = findNearestPathNode(aLine.lineCoords.x2, aLine.lineCoords.y2);
+                    
+                    if (nearest1.nodeId !== null && nearest1.nodeId !== aId1) {
+                        if (!graph.get(aId1).find(e => e.node === nearest1.nodeId)) {
+                            graph.get(aId1).push({ node: nearest1.nodeId, dist: nearest1.dist });
+                            graph.get(nearest1.nodeId).push({ node: aId1, dist: nearest1.dist });
+                            console.log(`Stop.${stop.stopNumber}.A uç1 -> path node ${nearest1.nodeId} bağlandı (mesafe: ${nearest1.dist.toFixed(1)})`);
+                        }
+                    }
+                    if (nearest2.nodeId !== null && nearest2.nodeId !== aId2) {
+                        if (!graph.get(aId2).find(e => e.node === nearest2.nodeId)) {
+                            graph.get(aId2).push({ node: nearest2.nodeId, dist: nearest2.dist });
+                            graph.get(nearest2.nodeId).push({ node: aId2, dist: nearest2.dist });
+                            console.log(`Stop.${stop.stopNumber}.A uç2 -> path node ${nearest2.nodeId} bağlandı (mesafe: ${nearest2.dist.toFixed(1)})`);
+                        }
+                    }
+                }
+                
+                if (bLine.lineCoords) {
+                    const bId1 = getNodeId(bLine.lineCoords.x1, bLine.lineCoords.y1);
+                    const bId2 = getNodeId(bLine.lineCoords.x2, bLine.lineCoords.y2);
+                    bLineNodes = [bId1, bId2];
+                    if (bId1 !== bId2) {
+                        const dist = Math.sqrt(Math.pow(bLine.lineCoords.x2 - bLine.lineCoords.x1, 2) + 
+                                              Math.pow(bLine.lineCoords.y2 - bLine.lineCoords.y1, 2));
+                        if (!graph.get(bId1).find(e => e.node === bId2)) {
+                            graph.get(bId1).push({ node: bId2, dist });
+                        }
+                        if (!graph.get(bId2).find(e => e.node === bId1)) {
+                            graph.get(bId2).push({ node: bId1, dist });
+                        }
+                    }
+                    
+                    // Stop B line uç noktalarını en yakın path düğümüne bağla
+                    const nearest1 = findNearestPathNode(bLine.lineCoords.x1, bLine.lineCoords.y1);
+                    const nearest2 = findNearestPathNode(bLine.lineCoords.x2, bLine.lineCoords.y2);
+                    
+                    if (nearest1.nodeId !== null && nearest1.nodeId !== bId1) {
+                        if (!graph.get(bId1).find(e => e.node === nearest1.nodeId)) {
+                            graph.get(bId1).push({ node: nearest1.nodeId, dist: nearest1.dist });
+                            graph.get(nearest1.nodeId).push({ node: bId1, dist: nearest1.dist });
+                            console.log(`Stop.${stop.stopNumber}.B uç1 -> path node ${nearest1.nodeId} bağlandı (mesafe: ${nearest1.dist.toFixed(1)})`);
+                        }
+                    }
+                    if (nearest2.nodeId !== null && nearest2.nodeId !== bId2) {
+                        if (!graph.get(bId2).find(e => e.node === nearest2.nodeId)) {
+                            graph.get(bId2).push({ node: nearest2.nodeId, dist: nearest2.dist });
+                            graph.get(nearest2.nodeId).push({ node: bId2, dist: nearest2.dist });
+                            console.log(`Stop.${stop.stopNumber}.B uç2 -> path node ${nearest2.nodeId} bağlandı (mesafe: ${nearest2.dist.toFixed(1)})`);
+                        }
+                    }
+                }
+                
+                // Stop merkez noktalarını al
+                const aCenter = aLine.center;
+                const bCenter = bLine.center;
+                
+                // Stop merkez noktalarını graph'a ekle
+                const aNodeId = getNodeId(aCenter[0], aCenter[1]);
+                const bNodeId = getNodeId(bCenter[0], bCenter[1]);
+                
+                // *** ÖNEMLİ: Stop merkezlerini doğrudan en yakın path düğümüne bağla ***
+                const nearestToA = findNearestPathNode(aCenter[0], aCenter[1]);
+                const nearestToB = findNearestPathNode(bCenter[0], bCenter[1]);
+                
+                if (nearestToA.nodeId !== null && nearestToA.nodeId !== aNodeId) {
+                    graph.get(aNodeId).push({ node: nearestToA.nodeId, dist: nearestToA.dist });
+                    graph.get(nearestToA.nodeId).push({ node: aNodeId, dist: nearestToA.dist });
+                    console.log(`Stop.${stop.stopNumber}.A merkez -> path node ${nearestToA.nodeId} bağlandı (mesafe: ${nearestToA.dist.toFixed(1)})`);
+                }
+                
+                if (nearestToB.nodeId !== null && nearestToB.nodeId !== bNodeId) {
+                    graph.get(bNodeId).push({ node: nearestToB.nodeId, dist: nearestToB.dist });
+                    graph.get(nearestToB.nodeId).push({ node: bNodeId, dist: nearestToB.dist });
+                    console.log(`Stop.${stop.stopNumber}.B merkez -> path node ${nearestToB.nodeId} bağlandı (mesafe: ${nearestToB.dist.toFixed(1)})`);
+                }
+                
+                // Teleport mesafesi çok küçük (ışınlanma)
+                const teleportDist = 0.1;
+                
+                // A->B geçişi aktif mi?
+                if (stop.aToB) {
+                    const existing = graph.get(aNodeId).find(e => e.node === bNodeId);
+                    if (!existing) {
+                        graph.get(aNodeId).push({ node: bNodeId, dist: teleportDist, isTeleport: true });
+                        console.log(`Stop.${stop.stopNumber}: A->B teleport eklendi`);
+                    }
+                }
+                
+                // B->A geçişi aktif mi?
+                if (stop.bToA) {
+                    const existing = graph.get(bNodeId).find(e => e.node === aNodeId);
+                    if (!existing) {
+                        graph.get(bNodeId).push({ node: aNodeId, dist: teleportDist, isTeleport: true });
+                        console.log(`Stop.${stop.stopNumber}: B->A teleport eklendi`);
+                    }
+                }
+            });
+        }
 
         let startNodeId = null, endNodeId = null;
         let minStartDist = Infinity, minEndDist = Infinity;
@@ -1267,6 +1492,65 @@ class MapDirection {
         }
         
         console.log(`findPathBetweenPoints: ${nodes.length} node, startDist=${minStartDist.toFixed(1)}, endDist=${minEndDist.toFixed(1)}`);
+        console.log(`  startNode=${startNodeId}, endNode=${endNodeId}`);
+        console.log(`  Başlangıç koordinatı:`, idToCoord.get(startNodeId));
+        console.log(`  Hedef koordinatı:`, idToCoord.get(endNodeId));
+        
+        // Graf bağlantılılığını kontrol et (BFS ile)
+        const visited = new Set();
+        const queue = [startNodeId];
+        visited.add(startNodeId);
+        while (queue.length > 0) {
+            const current = queue.shift();
+            for (const edge of graph.get(current) || []) {
+                if (!visited.has(edge.node)) {
+                    visited.add(edge.node);
+                    queue.push(edge.node);
+                }
+            }
+        }
+        const isEndReachable = visited.has(endNodeId);
+        console.log(`  BFS: ${visited.size}/${nodes.length} düğüme ulaşılabilir. Hedef ulaşılabilir: ${isEndReachable}`);
+        
+        // Ulaşılabilir düğümlerin sınır koordinatlarını bul
+        if (!isEndReachable && visited.size > 0) {
+            let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+            const reachableCoords = [];
+            visited.forEach(nodeId => {
+                const coord = idToCoord.get(nodeId);
+                if (coord) {
+                    reachableCoords.push(coord);
+                    minX = Math.min(minX, coord[0]);
+                    maxX = Math.max(maxX, coord[0]);
+                    minY = Math.min(minY, coord[1]);
+                    maxY = Math.max(maxY, coord[1]);
+                }
+            });
+            console.log(`  Ulaşılabilir alan: X[${minX.toFixed(0)}-${maxX.toFixed(0)}], Y[${minY.toFixed(0)}-${maxY.toFixed(0)}]`);
+            
+            // Hedefin koordinatı
+            const endCoord = idToCoord.get(endNodeId);
+            if (endCoord) {
+                console.log(`  Hedef (${endCoord[0].toFixed(0)}, ${endCoord[1].toFixed(0)}) ulaşılabilir alanın dışında!`);
+            }
+            
+            // Sınır düğümlerini bul (ulaşılabilir ama hedefe en yakın olanlar)
+            let closestToEnd = null;
+            let closestDist = Infinity;
+            visited.forEach(nodeId => {
+                const coord = idToCoord.get(nodeId);
+                if (coord && endCoord) {
+                    const dist = Math.sqrt(Math.pow(coord[0] - endCoord[0], 2) + Math.pow(coord[1] - endCoord[1], 2));
+                    if (dist < closestDist) {
+                        closestDist = dist;
+                        closestToEnd = { nodeId, coord };
+                    }
+                }
+            });
+            if (closestToEnd) {
+                console.log(`  Hedefe en yakın ulaşılabilir düğüm: node ${closestToEnd.nodeId} at (${closestToEnd.coord[0].toFixed(1)}, ${closestToEnd.coord[1].toFixed(1)}), mesafe: ${closestDist.toFixed(1)}`);
+            }
+        }
 
         if (startNodeId === null || endNodeId === null) {
             console.warn('Path node bulunamadı');
@@ -1393,5 +1677,306 @@ class MapDirection {
         group.appendChild(circle);
 
         this.svgElement.appendChild(group);
+    }
+
+    // ==================== DEBUG & TEST FUNCTIONS ====================
+
+    /**
+     * Stop noktasının koordinatlarını al
+     * @param {string} stopId - Örnek: "Stop.7.A" veya "Stop.7.B"
+     * @param {string} floorId - Kat ID
+     * @returns {object|null} - { center: [x, y], lineCoords: { x1, y1, x2, y2 } }
+     */
+    getStopCoordinates(stopId, floorId) {
+        const floorData = this.floors.get(floorId);
+        if (!floorData || !floorData.stopTeleports) {
+            console.warn(`Kat ${floorId} bulunamadı veya Stop yok`);
+            return null;
+        }
+        
+        // Stop ID'yi parse et (Stop.7.A -> stopNumber=7, side=A)
+        const match = stopId.match(/^Stop\.(\d+)\.([AB])$/i);
+        if (!match) {
+            console.warn(`Geçersiz Stop ID: ${stopId}`);
+            return null;
+        }
+        
+        const stopNumber = match[1];
+        const side = match[2].toUpperCase();
+        
+        const stopPair = floorData.stopTeleports.find(s => s.stopNumber === stopNumber);
+        if (!stopPair) {
+            console.warn(`Stop.${stopNumber} bulunamadı (Kat ${floorId})`);
+            return null;
+        }
+        
+        const stopData = side === 'A' ? stopPair.A : stopPair.B;
+        if (!stopData) {
+            console.warn(`Stop.${stopNumber}.${side} bulunamadı`);
+            return null;
+        }
+        
+        return {
+            id: stopId,
+            center: stopData.center,
+            lineCoords: stopData.lineCoords,
+            status: stopData.Status
+        };
+    }
+
+    /**
+     * Bir odadan Stop noktasına rota hesapla (TEST için)
+     * @param {string} roomId - Başlangıç odası ID
+     * @param {string} stopId - Hedef Stop ID (örn: "Stop.7.A")
+     * @param {string} floorId - Kat ID
+     */
+    testRouteToStop(roomId, stopId, floorId) {
+        console.log(`\n=== TEST: ${roomId} -> ${stopId} (Kat ${floorId}) ===`);
+        
+        this.setCurrentFloor(floorId);
+        
+        // Oda koordinatını bul
+        const room = this.rooms.find(r => r.id === roomId);
+        if (!room) {
+            console.error(`Oda bulunamadı: ${roomId}`);
+            return null;
+        }
+        
+        // Stop koordinatını bul
+        const stopCoords = this.getStopCoordinates(stopId, floorId);
+        if (!stopCoords) {
+            return null;
+        }
+        
+        console.log(`Oda ${roomId} merkezi:`, room.center);
+        console.log(`${stopId} merkezi:`, stopCoords.center);
+        console.log(`${stopId} line koordinatları:`, stopCoords.lineCoords);
+        
+        // Path hesapla
+        const path = this.findPathBetweenPoints(room.center, stopCoords.center);
+        
+        if (path) {
+            console.log(`✅ Rota bulundu! ${path.length} nokta`);
+            console.log(`Rota:`, path);
+            return path;
+        } else {
+            console.error(`❌ Rota bulunamadı: ${roomId} -> ${stopId}`);
+            return null;
+        }
+    }
+
+    /**
+     * Stop noktasından bir odaya rota hesapla (TEST için)
+     * @param {string} stopId - Başlangıç Stop ID (örn: "Stop.7.B")
+     * @param {string} roomId - Hedef odası ID
+     * @param {string} floorId - Kat ID
+     */
+    testRouteFromStop(stopId, roomId, floorId) {
+        console.log(`\n=== TEST: ${stopId} -> ${roomId} (Kat ${floorId}) ===`);
+        
+        this.setCurrentFloor(floorId);
+        
+        // Stop koordinatını bul
+        const stopCoords = this.getStopCoordinates(stopId, floorId);
+        if (!stopCoords) {
+            return null;
+        }
+        
+        // Oda koordinatını bul
+        const room = this.rooms.find(r => r.id === roomId);
+        if (!room) {
+            console.error(`Oda bulunamadı: ${roomId}`);
+            return null;
+        }
+        
+        console.log(`${stopId} merkezi:`, stopCoords.center);
+        console.log(`${stopId} line koordinatları:`, stopCoords.lineCoords);
+        console.log(`Oda ${roomId} merkezi:`, room.center);
+        
+        // Path hesapla
+        const path = this.findPathBetweenPoints(stopCoords.center, room.center);
+        
+        if (path) {
+            console.log(`✅ Rota bulundu! ${path.length} nokta`);
+            console.log(`Rota:`, path);
+            return path;
+        } else {
+            console.error(`❌ Rota bulunamadı: ${stopId} -> ${roomId}`);
+            return null;
+        }
+    }
+
+    /**
+     * Tam Stop teleport testini çalıştır
+     * ID235 -> Stop.7.A -> [TELEPORT] -> Stop.7.B -> ID220A
+     */
+    testFullStopRoute(startRoomId, stopNumber, endRoomId, floorId) {
+        console.log(`\n========================================`);
+        console.log(`FULL STOP TEST: ${startRoomId} -> Stop.${stopNumber} -> ${endRoomId}`);
+        console.log(`========================================\n`);
+        
+        // 1. startRoom -> Stop.X.A
+        const path1 = this.testRouteToStop(startRoomId, `Stop.${stopNumber}.A`, floorId);
+        
+        // 2. Stop.X.B -> endRoom
+        const path2 = this.testRouteFromStop(`Stop.${stopNumber}.B`, endRoomId, floorId);
+        
+        if (path1 && path2) {
+            console.log(`\n✅✅ TAM ROTA BAŞARILI ✅✅`);
+            console.log(`${startRoomId} -> Stop.${stopNumber}.A: ${path1.length} nokta`);
+            console.log(`Stop.${stopNumber}.B -> ${endRoomId}: ${path2.length} nokta`);
+            return { path1, path2 };
+        } else {
+            console.error(`\n❌❌ TAM ROTA BAŞARISIZ ❌❌`);
+            return null;
+        }
+    }
+
+    /**
+     * Graf yapısını analiz et - bağlantısız bileşenleri bul
+     */
+    analyzeGraph(floorId) {
+        console.log(`\n=== Graf Analizi (Kat ${floorId}) ===`);
+        
+        this.setCurrentFloor(floorId);
+        
+        if (this.paths.length === 0) {
+            console.error('Path yok!');
+            return;
+        }
+        
+        // Graf oluştur
+        const graph = new Map();
+        const idToCoord = new Map();
+        const nodes = [];
+        let nodeId = 0;
+        const TOLERANCE = 1.0;
+        
+        const getNodeId = (x, y) => {
+            for (let i = 0; i < nodes.length; i++) {
+                const node = nodes[i];
+                const dist = Math.sqrt(Math.pow(node.x - x, 2) + Math.pow(node.y - y, 2));
+                if (dist <= TOLERANCE) return node.id;
+            }
+            const id = nodeId++;
+            nodes.push({ id, x, y });
+            idToCoord.set(id, [x, y]);
+            graph.set(id, []);
+            return id;
+        };
+        
+        this.paths.forEach(path => {
+            const id1 = getNodeId(path.x1, path.y1);
+            const id2 = getNodeId(path.x2, path.y2);
+            if (id1 === id2) return;
+            const dist = Math.sqrt(Math.pow(path.x2 - path.x1, 2) + Math.pow(path.y2 - path.y1, 2));
+            if (!graph.get(id1).find(e => e.node === id2)) {
+                graph.get(id1).push({ node: id2, dist });
+            }
+            if (!graph.get(id2).find(e => e.node === id1)) {
+                graph.get(id2).push({ node: id1, dist });
+            }
+        });
+        
+        console.log(`Toplam düğüm: ${nodes.length}, Path segmenti: ${this.paths.length}`);
+        
+        // Bağlantısız bileşenleri bul
+        const visited = new Set();
+        const components = [];
+        
+        for (const node of nodes) {
+            if (visited.has(node.id)) continue;
+            
+            const component = [];
+            const queue = [node.id];
+            visited.add(node.id);
+            
+            while (queue.length > 0) {
+                const current = queue.shift();
+                component.push(current);
+                for (const edge of graph.get(current) || []) {
+                    if (!visited.has(edge.node)) {
+                        visited.add(edge.node);
+                        queue.push(edge.node);
+                    }
+                }
+            }
+            
+            // Bileşenin sınırlarını hesapla
+            let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+            component.forEach(nId => {
+                const coord = idToCoord.get(nId);
+                if (coord) {
+                    minX = Math.min(minX, coord[0]);
+                    maxX = Math.max(maxX, coord[0]);
+                    minY = Math.min(minY, coord[1]);
+                    maxY = Math.max(maxY, coord[1]);
+                }
+            });
+            
+            components.push({
+                size: component.length,
+                bounds: { minX, maxX, minY, maxY },
+                nodes: component
+            });
+        }
+        
+        // Bileşenleri boyuta göre sırala
+        components.sort((a, b) => b.size - a.size);
+        
+        console.log(`\nBağlantısız bileşen sayısı: ${components.length}`);
+        components.forEach((comp, idx) => {
+            console.log(`  Bileşen ${idx + 1}: ${comp.size} düğüm, X[${comp.bounds.minX.toFixed(0)}-${comp.bounds.maxX.toFixed(0)}], Y[${comp.bounds.minY.toFixed(0)}-${comp.bounds.maxY.toFixed(0)}]`);
+        });
+        
+        // Odaların hangi bileşende olduğunu kontrol et
+        console.log(`\nÖrnek odaların bileşenleri:`);
+        const testRooms = ['ID235', 'ID220A', 'ID200', 'ID201'];
+        testRooms.forEach(roomId => {
+            const room = this.rooms.find(r => r.id === roomId);
+            if (!room) return;
+            
+            // En yakın düğümü bul
+            let nearestNodeId = null;
+            let nearestDist = Infinity;
+            for (const node of nodes) {
+                const dist = Math.sqrt(Math.pow(node.x - room.center[0], 2) + Math.pow(node.y - room.center[1], 2));
+                if (dist < nearestDist) {
+                    nearestDist = dist;
+                    nearestNodeId = node.id;
+                }
+            }
+            
+            // Hangi bileşende
+            const compIdx = components.findIndex(c => c.nodes.includes(nearestNodeId));
+            console.log(`  ${roomId}: Bileşen ${compIdx + 1}, mesafe ${nearestDist.toFixed(1)}`);
+        });
+        
+        return components;
+    }
+
+    /**
+     * Kat içindeki tüm Stop'ların durumunu göster
+     */
+    debugStops(floorId) {
+        const floorData = this.floors.get(floorId);
+        if (!floorData) {
+            console.error(`Kat ${floorId} bulunamadı`);
+            return;
+        }
+        
+        console.log(`\n=== Kat ${floorId} Stop Durumu ===`);
+        
+        if (!floorData.stopTeleports || floorData.stopTeleports.length === 0) {
+            console.log('Bu katta Stop yok');
+            return;
+        }
+        
+        floorData.stopTeleports.forEach(stop => {
+            console.log(`Stop.${stop.stopNumber}:`);
+            console.log(`  A: center=${JSON.stringify(stop.A?.center)}, lineCoords=${JSON.stringify(stop.A?.lineCoords)}, status=${stop.A?.Status}`);
+            console.log(`  B: center=${JSON.stringify(stop.B?.center)}, lineCoords=${JSON.stringify(stop.B?.lineCoords)}, status=${stop.B?.Status}`);
+            console.log(`  A->B: ${stop.aToB}, B->A: ${stop.bToA}`);
+        });
     }
 }

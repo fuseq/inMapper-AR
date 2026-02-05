@@ -149,6 +149,16 @@
 
     <h2 style="text-align: center; margin-bottom: 20px;">🏢 Çok Katlı Navigasyon</h2>
 
+    <!-- Bina Seçimi -->
+    <div class="input-group" style="margin-bottom: 15px;">
+        <label for="buildingSelect">🏬 Bina Seçin:</label>
+        <select id="buildingSelect">
+            <option value="">-- Bina Seçin --</option>
+            <option value="zorlu">Zorlu Center</option>
+            <option value="ISG">İSG</option>
+        </select>
+    </div>
+
     <!-- Başlangıç: Kat + Birim aynı satırda -->
     <div class="selection-row">
         <div class="floor-group">
@@ -201,84 +211,134 @@
         let mapDirection = null;
         let excelData = {}; // { floorId: { roomId: { title, subtitle } } }
         let currentRoute = null;
+        let currentBuilding = null; // Seçili bina
 
         document.addEventListener('DOMContentLoaded', async function() {
             mapDirection = new MapDirection();
             
-            // Tüm katları yükle
+            // Başlangıçta loading'i gizle
+            document.getElementById('loadingOverlay').classList.add('hidden');
+            
+            // Bina seçimi event listener'ı
+            document.getElementById('buildingSelect').addEventListener('change', onBuildingChange);
+            
+            // Event listener'lar
+            document.getElementById('startFloor').addEventListener('change', onStartFloorChange);
+            document.getElementById('endFloor').addEventListener('change', onEndFloorChange);
+            document.getElementById('startRoom').addEventListener('change', updateRoutePreview);
+            document.getElementById('endRoom').addEventListener('change', updateRoutePreview);
+        });
+        
+        async function onBuildingChange() {
+            const buildingSelect = document.getElementById('buildingSelect');
+            const building = buildingSelect.value;
+            
+            if (!building) {
+                // Bina seçilmemişse dropdown'ları temizle
+                currentBuilding = null;
+                document.getElementById('startFloor').innerHTML = '<option value="">--</option>';
+                document.getElementById('endFloor').innerHTML = '<option value="">--</option>';
+                document.getElementById('startRoom').innerHTML = '<option value="">-- Önce bina seçin --</option>';
+                document.getElementById('endRoom').innerHTML = '<option value="">-- Önce bina seçin --</option>';
+                document.getElementById('routePreview').classList.remove('show');
+                return;
+            }
+            
+            // Loading göster
+            document.getElementById('loadingOverlay').classList.remove('hidden');
+            
             try {
-                await mapDirection.loadAllFloors('./zorlu');
-                await loadExcelData();
+                currentBuilding = building;
+                
+                // Yeni MapDirection oluştur
+                mapDirection = new MapDirection();
+                
+                // Seçilen bina için katları yükle
+                await mapDirection.loadAllFloors(`./${building}`);
+                await loadExcelData(building);
                 
                 // Kat dropdown'larını doldur
                 populateFloorSelects();
                 
-                // Event listener'lar
-                document.getElementById('startFloor').addEventListener('change', onStartFloorChange);
-                document.getElementById('endFloor').addEventListener('change', onEndFloorChange);
-                document.getElementById('startRoom').addEventListener('change', updateRoutePreview);
-                document.getElementById('endRoom').addEventListener('change', updateRoutePreview);
+                // Oda dropdown'larını sıfırla
+                document.getElementById('startRoom').innerHTML = '<option value="">-- Önce kat seçin --</option>';
+                document.getElementById('endRoom').innerHTML = '<option value="">-- Önce kat seçin --</option>';
+                
+                // Rota önizlemeyi gizle
+                document.getElementById('routePreview').classList.remove('show');
                 
                 document.getElementById('loadingOverlay').classList.add('hidden');
+                console.log(`${building} binası yüklendi`);
             } catch (e) {
-                console.error('Yükleme hatası:', e);
-                document.getElementById('loadingOverlay').innerHTML = `
-                    <div style="text-align: center; color: red;">
-                        <p>Haritalar yüklenemedi!</p>
-                        <p>${e.message}</p>
-                    </div>
-                `;
+                console.error('Bina yükleme hatası:', e);
+                document.getElementById('loadingOverlay').classList.add('hidden');
+                alert(`${building} binası yüklenemedi: ${e.message}`);
+            }
+        }
+            
+        // AR butonu
+        document.getElementById('ar-button').addEventListener('click', function(event) {
+            event.preventDefault();
+            
+            const startFloor = document.getElementById('startFloor').value;
+            const endFloor = document.getElementById('endFloor').value;
+            const startRoom = document.getElementById('startRoom').value;
+            const endRoom = document.getElementById('endRoom').value;
+            
+            if (!currentBuilding) {
+                alert('Lütfen önce bir bina seçin!');
+                return;
             }
             
-            // AR butonu
-            document.getElementById('ar-button').addEventListener('click', function(event) {
-                event.preventDefault();
-                
-                const startFloor = document.getElementById('startFloor').value;
-                const endFloor = document.getElementById('endFloor').value;
-                const startRoom = document.getElementById('startRoom').value;
-                const endRoom = document.getElementById('endRoom').value;
-                
-                if (!startFloor || !endFloor || !startRoom || !endRoom) {
-                    alert('Lütfen tüm alanları doldurun!');
-                    return;
-                }
-                
-                if (startFloor === endFloor && startRoom === endRoom) {
-                    alert('Başlangıç ve hedef aynı olamaz!');
-                    return;
-                }
-                
-                // Çoklu kat rotası hesapla
-                const route = mapDirection.calculateMultiFloorRoute(startRoom, startFloor, endRoom, endFloor);
-                
-                if (!route) {
-                    alert('Rota hesaplanamadı!');
-                    return;
-                }
-                
-                console.log('Hesaplanan rota:', route);
-                
-                // Rota bilgilerini encode et
-                const routeData = encodeURIComponent(JSON.stringify(route));
-                
-                // AR sayfasına yönlendir
-                const params = new URLSearchParams({
-                    routeData: routeData,
-                    startRoom: startRoom,
-                    endRoom: endRoom,
-                    startFloor: startFloor,
-                    endFloor: endFloor
-                });
-                
-                window.location.href = `ar.html?${params.toString()}`;
+            if (!startFloor || !endFloor || !startRoom || !endRoom) {
+                alert('Lütfen tüm alanları doldurun!');
+                return;
+            }
+            
+            if (startFloor === endFloor && startRoom === endRoom) {
+                alert('Başlangıç ve hedef aynı olamaz!');
+                return;
+            }
+            
+            // Çoklu kat rotası hesapla
+            const route = mapDirection.calculateMultiFloorRoute(startRoom, startFloor, endRoom, endFloor);
+            
+            if (!route) {
+                alert('Rota hesaplanamadı!');
+                return;
+            }
+            
+            console.log('Hesaplanan rota:', route);
+            
+            // Rota bilgilerini encode et
+            const routeData = encodeURIComponent(JSON.stringify(route));
+            
+            // AR sayfasına yönlendir (bina bilgisi ile)
+            const params = new URLSearchParams({
+                routeData: routeData,
+                startRoom: startRoom,
+                endRoom: endRoom,
+                startFloor: startFloor,
+                endFloor: endFloor,
+                building: currentBuilding
             });
+            
+            window.location.href = `ar.html?${params.toString()}`;
         });
         
-        async function loadExcelData() {
+        async function loadExcelData(building = 'zorlu') {
+            // Excel verilerini sıfırla
+            excelData = {};
+            
+            // Excel dosya adı her zaman küçük harfle
+            const excelFileName = building.toLowerCase();
+            
             try {
-                const response = await fetch('./zorlu.xlsx');
-                if (!response.ok) return;
+                const response = await fetch(`./${excelFileName}.xlsx`);
+                if (!response.ok) {
+                    console.log(`${excelFileName}.xlsx bulunamadı`);
+                    return;
+                }
                 
                 const arrayBuffer = await response.arrayBuffer();
                 const workbook = XLSX.read(arrayBuffer, { type: 'array' });

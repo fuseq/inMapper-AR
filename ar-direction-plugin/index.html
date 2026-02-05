@@ -1,0 +1,658 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>AR Direction Plugin</title>
+    
+    <!-- A-Frame for AR Camera -->
+    <script src="https://aframe.io/releases/1.3.0/aframe.min.js"></script>
+    <script src="https://raw.githack.com/jeromeetienne/AR.js/master/aframe/build/aframe-ar.min.js"></script>
+    <script>
+        THREEx.ArToolkitContext.baseURL = 'https://raw.githack.com/jeromeetienne/ar.js/master/three.js/'
+    </script>
+    
+    <!-- Plugin -->
+    <script src="ar-direction.js"></script>
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #000;
+            color: #fff;
+            overflow: hidden;
+            height: 100vh;
+        }
+
+        /* ==================== ARROWS (Original Style) ==================== */
+        .arrow {
+            position: fixed;
+            top: 33%;
+            transform: translateY(-50%);
+            opacity: 0;
+            transition: opacity 0.1s ease-in-out;
+            z-index: 100;
+        }
+
+        .arrow-icon {
+            width: 60px;
+            height: auto;
+        }
+
+        .arrow.left {
+            left: 25px;
+        }
+
+        .arrow.right {
+            right: 25px;
+        }
+
+        .arrow.up {
+            left: 50%;
+            transform: translate(-50%, -50%) scale(1.5);
+        }
+
+        .arrow.up-perspective {
+            left: 50%;
+            transform: translate(-50%, -50%) scale(1.2);
+        }
+
+        .fade-in {
+            opacity: 1;
+        }
+
+        .fade-out {
+            opacity: 0;
+        }
+
+        /* Arrow Animations */
+        .left-arrow {
+            animation: moveLeftArrow 1.5s ease-in-out infinite;
+        }
+
+        @keyframes moveLeftArrow {
+            0%, 100% { transform: translateX(0); }
+            50% { transform: translateX(-25px); }
+        }
+
+        .right-arrow {
+            animation: moveRightArrow 1.5s ease-in-out infinite;
+        }
+
+        @keyframes moveRightArrow {
+            0%, 100% { transform: translateX(0); }
+            50% { transform: translateX(25px); }
+        }
+
+        .up-arrow {
+            animation: jump 1s ease infinite;
+        }
+
+        @keyframes jump {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-10px); }
+        }
+
+        .up-arrow-perspective {
+            animation: jumpPerspective 1.2s ease infinite;
+        }
+
+        @keyframes jumpPerspective {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-5px); }
+        }
+
+        /* ==================== PROGRESS CIRCLE ==================== */
+        .container {
+            position: fixed;
+            top: 25%;
+            left: 50%;
+            transform: translateX(-50%) scale(0.5);
+            width: 100px;
+            height: 100px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            transition: transform 1s ease;
+            z-index: 100;
+        }
+
+        .container.grow {
+            transform: translateX(-50%) scale(1);
+        }
+
+        .progress-circle {
+            transform: rotate(-90deg);
+        }
+
+        .progress {
+            stroke-dasharray: 283;
+            stroke-dashoffset: 283;
+            transition: stroke-dashoffset 3s linear;
+        }
+
+        /* ==================== UI OVERLAY ==================== */
+        #uiOverlay {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 20px 20px 0 0;
+            padding: 20px;
+            z-index: 200;
+            transition: height 0.3s ease;
+            max-height: 100vh;
+            overflow-y: auto;
+        }
+
+        #uiOverlay.minimized {
+            height: auto;
+            max-height: 180px;
+        }
+
+        #uiOverlay.expanded {
+            height: 100vh;
+            border-radius: 0;
+        }
+
+        .handle {
+            width: 40px;
+            height: 4px;
+            background: #ddd;
+            border-radius: 2px;
+            margin: 0 auto 15px auto;
+        }
+
+        /* ==================== INFO PANEL ==================== */
+        .info-panel {
+            background: #f5f5f5;
+            border-radius: 12px;
+            padding: 15px;
+            margin-bottom: 15px;
+        }
+
+        .info-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid #eee;
+            color: #333;
+        }
+
+        .info-row:last-child {
+            border-bottom: none;
+        }
+
+        .info-row .label {
+            color: #666;
+        }
+
+        .info-row .value {
+            font-weight: 600;
+            color: #2196F3;
+        }
+
+        /* ==================== BUTTONS ==================== */
+        .btn-container {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+
+        .btn {
+            flex: 1;
+            padding: 12px 20px;
+            border: none;
+            border-radius: 25px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #7daef1, #5c9de8);
+            color: white;
+        }
+
+        .btn-danger {
+            background: linear-gradient(135deg, #ee8793, #e57373);
+            color: white;
+        }
+
+        .btn-secondary {
+            background: #f0f0f0;
+            color: #333;
+            border: 1px solid #ddd;
+        }
+
+        /* ==================== SEGMENT INPUT ==================== */
+        .input-section {
+            margin-top: 15px;
+        }
+
+        .input-section h3 {
+            font-size: 14px;
+            color: #333;
+            margin-bottom: 10px;
+        }
+
+        #segmentsInput {
+            width: 100%;
+            height: 80px;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            font-family: 'Consolas', monospace;
+            font-size: 12px;
+            resize: vertical;
+            margin-bottom: 10px;
+        }
+
+        .input-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+
+        .input-row label {
+            color: #666;
+            font-size: 14px;
+        }
+
+        .input-row input {
+            width: 60px;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+        }
+
+        /* ==================== POPUP ==================== */
+        .popup {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            z-index: 10000;
+            display: none;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .popup-content {
+            text-align: center;
+            padding: 40px;
+        }
+
+        .popup-icon {
+            font-size: 80px;
+            margin-bottom: 20px;
+        }
+
+        .popup-message {
+            font-size: 20px;
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 30px;
+        }
+
+        .popup .btn {
+            min-width: 150px;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+    </style>
+</head>
+<body>
+    <!-- Direction Arrows (Original Style) -->
+    <div class="arrow left" id="left-arrow">
+        <img src="../assets/left_arrow.png" alt="Left Arrow" class="arrow-icon left-arrow">
+    </div>
+    <div class="arrow right" id="right-arrow">
+        <img src="../assets/right_arrow.png" alt="Right Arrow" class="arrow-icon right-arrow">
+    </div>
+    <div class="arrow up" id="up-arrow">
+        <img src="../assets/ileri.png" alt="Up Arrow" class="arrow-icon up-arrow">
+    </div>
+    <div class="arrow up-perspective" id="up-arrow-perspective">
+        <img src="../assets/arrow-up.png" alt="Up Arrow Perspective" class="arrow-icon up-arrow-perspective">
+    </div>
+
+    <!-- Progress Circle -->
+    <div class="container" id="progressContainer">
+        <svg class="progress-circle" width="100" height="100">
+            <circle cx="50" cy="50" r="45" stroke="#e0e0e0" stroke-width="8" fill="none" />
+            <circle class="progress" cx="50" cy="50" r="45" stroke="#4CAF50" stroke-width="8" fill="none" />
+        </svg>
+    </div>
+
+    <!-- Completion Popup -->
+    <div class="popup" id="popup">
+        <div class="popup-content">
+            <div class="popup-icon">✅</div>
+            <div class="popup-message">Hedefe ulaştınız!</div>
+            <button class="btn btn-primary" id="btnPopupOk">Tamam</button>
+        </div>
+    </div>
+
+    <!-- UI Overlay -->
+    <div id="uiOverlay" class="expanded">
+        <div class="handle"></div>
+        
+        <!-- Info Panel -->
+        <div class="info-panel" id="infoPanel">
+            <div class="info-row">
+                <span class="label">Durum:</span>
+                <span class="value" id="statusText">Hazır</span>
+            </div>
+            <div class="info-row">
+                <span class="label">Hedef Yön:</span>
+                <span class="value" id="targetDirection">-</span>
+            </div>
+            <div class="info-row">
+                <span class="label">Pusula:</span>
+                <span class="value" id="currentCompass">-</span>
+            </div>
+        </div>
+
+        <!-- Buttons -->
+        <div class="btn-container">
+            <button class="btn btn-primary" id="btnStart">▶ AR Başlat</button>
+            <button class="btn btn-danger hidden" id="btnStop">⏹ Durdur</button>
+        </div>
+
+        <div class="btn-container">
+            <button class="btn btn-secondary" id="btnDemo">🎮 Demo Veri</button>
+        </div>
+
+        <!-- Segment Input -->
+        <div class="input-section">
+            <h3>📍 Line Segmentleri</h3>
+            <textarea id="segmentsInput" placeholder='[{"x1":100,"y1":100,"x2":150,"y2":120}, ...]'></textarea>
+            <div class="input-row">
+                <label>Max Segment:</label>
+                <input type="number" id="maxSegments" value="5" min="1" max="20">
+            </div>
+            <button class="btn btn-secondary" id="btnSetSegments" style="width: 100%;">Segment Ayarla</button>
+        </div>
+    </div>
+
+    <script>
+        // ==================== VARIABLES ====================
+        let arPlugin = null;
+        let activeAScene = null;
+        let directionToTurn = 0;
+        let directionMatches = false;
+
+        // ==================== UI ELEMENTS ====================
+        const uiOverlay = document.getElementById('uiOverlay');
+        const statusText = document.getElementById('statusText');
+        const targetDirection = document.getElementById('targetDirection');
+        const currentCompass = document.getElementById('currentCompass');
+        const btnStart = document.getElementById('btnStart');
+        const btnStop = document.getElementById('btnStop');
+        const btnDemo = document.getElementById('btnDemo');
+        const btnSetSegments = document.getElementById('btnSetSegments');
+        const segmentsInput = document.getElementById('segmentsInput');
+        const maxSegmentsInput = document.getElementById('maxSegments');
+        const popup = document.getElementById('popup');
+        const btnPopupOk = document.getElementById('btnPopupOk');
+        const progressContainer = document.getElementById('progressContainer');
+        const progressCircle = document.querySelector('.progress');
+
+        // Arrows
+        const leftArrow = document.getElementById('left-arrow');
+        const rightArrow = document.getElementById('right-arrow');
+        const upArrow = document.getElementById('up-arrow');
+        const upPerspectiveArrow = document.getElementById('up-arrow-perspective');
+
+        // ==================== DEMO DATA ====================
+        const demoSegments = [
+            {x1: 1378.973, y1: 1468.116, x2: 1406.603, y2: 1452.788},
+            {x1: 1406.603, y1: 1452.788, x2: 1450.234, y2: 1420.567},
+            {x1: 1450.234, y1: 1420.567, x2: 1520.456, y2: 1380.123},
+            {x1: 1520.456, y1: 1380.123, x2: 1600.789, y2: 1350.456},
+            {x1: 1600.789, y1: 1350.456, x2: 1680.123, y2: 1320.789}
+        ];
+
+        // ==================== CALLBACKS ====================
+        function onDirectionCalculated(direction) {
+            directionToTurn = direction.compassAngle;
+            targetDirection.textContent = `${direction.compass} (${direction.compassAngle.toFixed(0)}°)`;
+            statusText.textContent = 'Yön hesaplandı';
+            console.log('Direction:', direction);
+        }
+
+        function onArrowUpdate(arrowData) {
+            currentCompass.textContent = `${arrowData.currentCompass.toFixed(0)}°`;
+            showArrow(directionToTurn, arrowData.currentCompass, arrowData.beta);
+        }
+
+        function onError(error) {
+            statusText.textContent = 'Hata: ' + error;
+            console.error('Error:', error);
+        }
+
+        // ==================== ARROW DISPLAY ====================
+        function showArrow(targetAngle, currentDirection, beta) {
+            if (!activeAScene) return;
+
+            // Reset arrows
+            leftArrow.classList.remove('fade-in', 'fade-out');
+            rightArrow.classList.remove('fade-in', 'fade-out');
+            upArrow.classList.remove('fade-in', 'fade-out');
+            upPerspectiveArrow.classList.remove('fade-in', 'fade-out');
+
+            const upperBound = (targetAngle + 20) % 360;
+            const lowerBound = (targetAngle - 20 + 360) % 360;
+
+            // Check if direction matches
+            const isAligned = (currentDirection <= upperBound && currentDirection >= lowerBound) ||
+                (lowerBound > upperBound && (currentDirection >= lowerBound || currentDirection <= upperBound));
+
+            if (isAligned) {
+                // Show forward arrow
+                if (beta < 30) {
+                    upPerspectiveArrow.classList.add('fade-in');
+                    upArrow.classList.remove('fade-in');
+                } else {
+                    upArrow.classList.add('fade-in');
+                    upPerspectiveArrow.classList.remove('fade-in');
+                }
+                leftArrow.classList.add('fade-out');
+                rightArrow.classList.add('fade-out');
+
+                // Start progress
+                if (!directionMatches) {
+                    directionMatches = true;
+                    progressContainer.classList.add('grow');
+                    progressCircle.style.strokeDashoffset = '0';
+                    monitorProgress();
+                }
+            } else {
+                // Calculate turn direction
+                const clockwise = (targetAngle - currentDirection + 360) % 360;
+                const counterclockwise = (currentDirection - targetAngle + 360) % 360;
+
+                if (clockwise <= counterclockwise) {
+                    rightArrow.classList.add('fade-in');
+                    leftArrow.classList.add('fade-out');
+                } else {
+                    leftArrow.classList.add('fade-in');
+                    rightArrow.classList.add('fade-out');
+                }
+                upArrow.classList.remove('fade-in');
+                upPerspectiveArrow.classList.remove('fade-in');
+
+                // Reset progress
+                directionMatches = false;
+                progressContainer.classList.remove('grow');
+                progressCircle.style.strokeDashoffset = '283';
+            }
+        }
+
+        function monitorProgress() {
+            const currentOffset = parseFloat(getComputedStyle(progressCircle).strokeDashoffset);
+            
+            if (currentOffset === 0 && directionMatches) {
+                // Completed
+                stopAR();
+                popup.style.display = 'flex';
+            } else if (directionMatches) {
+                requestAnimationFrame(monitorProgress);
+            }
+        }
+
+        function hideAllArrows() {
+            ['left-arrow', 'right-arrow', 'up-arrow', 'up-arrow-perspective'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.classList.remove('fade-in');
+            });
+        }
+
+        // ==================== AR CONTROL ====================
+        function startAR() {
+            if (!arPlugin || arPlugin.segments.length < 1) {
+                alert('Önce segment verisi girin!');
+                return;
+            }
+
+            // Calculate direction
+            arPlugin.calculateDirection();
+
+            // Create A-Scene
+            activeAScene = document.createElement('a-scene');
+            activeAScene.setAttribute('vr-mode-ui', 'enabled: false');
+            activeAScene.setAttribute('embedded', '');
+            activeAScene.style.position = 'fixed';
+            activeAScene.style.top = '0';
+            activeAScene.style.left = '0';
+            activeAScene.style.width = '100%';
+            activeAScene.style.height = '100%';
+            activeAScene.style.zIndex = '1';
+            document.body.insertBefore(activeAScene, document.body.firstChild);
+
+            // Minimize UI
+            uiOverlay.classList.remove('expanded');
+            uiOverlay.classList.add('minimized');
+
+            // Start compass
+            arPlugin.start();
+
+            // Update UI
+            btnStart.classList.add('hidden');
+            btnStop.classList.remove('hidden');
+            statusText.textContent = 'AR Çalışıyor...';
+        }
+
+        function stopAR() {
+            // Stop plugin
+            if (arPlugin) {
+                arPlugin.stop();
+            }
+
+            // Remove A-Scene
+            if (activeAScene) {
+                activeAScene.remove();
+                activeAScene = null;
+            }
+            document.querySelectorAll('a-scene').forEach(s => s.remove());
+
+            // Stop camera
+            document.querySelectorAll('video').forEach(video => {
+                if (video.srcObject) {
+                    video.srcObject.getTracks().forEach(track => track.stop());
+                    video.srcObject = null;
+                }
+                video.remove();
+            });
+
+            // Reset UI
+            hideAllArrows();
+            directionMatches = false;
+            progressContainer.classList.remove('grow');
+            progressCircle.style.strokeDashoffset = '283';
+
+            uiOverlay.classList.remove('minimized');
+            uiOverlay.classList.add('expanded');
+
+            btnStart.classList.remove('hidden');
+            btnStop.classList.add('hidden');
+            statusText.textContent = 'Durduruldu';
+        }
+
+        // ==================== INIT PLUGIN ====================
+        function initPlugin(segments, maxSegments = 5) {
+            if (arPlugin) {
+                arPlugin.stop();
+            }
+
+            arPlugin = new ARDirectionPlugin({
+                segments: segments,
+                maxSegments: maxSegments,
+                onDirectionCalculated: onDirectionCalculated,
+                onArrowUpdate: onArrowUpdate,
+                onError: onError
+            });
+
+            statusText.textContent = `${segments.length} segment yüklendi`;
+            targetDirection.textContent = '-';
+            currentCompass.textContent = '-';
+        }
+
+        // ==================== EVENT HANDLERS ====================
+        btnStart.addEventListener('click', startAR);
+        btnStop.addEventListener('click', stopAR);
+
+        btnDemo.addEventListener('click', () => {
+            segmentsInput.value = JSON.stringify(demoSegments, null, 2);
+            initPlugin(demoSegments, parseInt(maxSegmentsInput.value));
+        });
+
+        btnSetSegments.addEventListener('click', () => {
+            try {
+                const segments = JSON.parse(segmentsInput.value);
+                if (!Array.isArray(segments) || segments.length < 1) {
+                    throw new Error('En az 1 segment gerekli');
+                }
+                for (const seg of segments) {
+                    if (seg.x1 === undefined || seg.y1 === undefined || 
+                        seg.x2 === undefined || seg.y2 === undefined) {
+                        throw new Error('Her segment {x1, y1, x2, y2} formatında olmalı');
+                    }
+                }
+                initPlugin(segments, parseInt(maxSegmentsInput.value));
+            } catch (e) {
+                alert('Geçersiz format: ' + e.message);
+            }
+        });
+
+        btnPopupOk.addEventListener('click', () => {
+            popup.style.display = 'none';
+            uiOverlay.classList.remove('minimized');
+            uiOverlay.classList.add('expanded');
+        });
+
+        // ==================== INIT ====================
+        document.addEventListener('DOMContentLoaded', () => {
+            statusText.textContent = 'Hazır - Segment verisi girin veya Demo kullanın';
+        });
+    </script>
+</body>
+</html>

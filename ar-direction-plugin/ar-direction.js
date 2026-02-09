@@ -1,296 +1,216 @@
 /**
- * AR Direction Plugin
+ * ARDirectionCalculator v2.0
  * 
- * Bağımsız yön hesaplama ve AR navigasyon plugini.
- * Harita ve rota hesaplama sisteminden bağımsız çalışır.
+ * SVG segment verilerinden pusula yönü hesaplayan bağımsız modül.
+ * DOM, UI veya cihaz API bağımlılığı yoktur. Tamamen saf matematik.
  * 
- * Input: Line segment dizisi {x1, y1, x2, y2} veya nokta dizisi [[x,y], ...]
- * Output: Pusula yönü ve ok gösterimi için callback'ler
+ * Tek başına veya ARNavigationUI ile birlikte kullanılabilir.
  * 
- * Kullanım:
- * const plugin = new ARDirectionPlugin({
- *     segments: [{x1: 100, y1: 100, x2: 150, y2: 120}, ...],
- *     maxSegments: 5,
- *     onDirectionCalculated: (direction) => {},
- *     onArrowUpdate: (arrowData) => {},
- *     onError: (error) => {}
+ * @example
+ * // Segment ile kullanım
+ * const calc = new ARDirectionCalculator({
+ *     segments: [{x1: 100, y1: 200, x2: 150, y2: 180}],
+ *     maxSegments: 5
  * });
- * plugin.start();
+ * const result = calc.calculate();
+ * console.log(result.compassAngle); // 0-360 derece
+ * console.log(result.compass);      // "Kuzeydoğu"
+ * 
+ * @example
+ * // Nokta dizisi ile kullanım
+ * const calc = new ARDirectionCalculator();
+ * calc.setPathFromPoints([[100, 200], [150, 180], [200, 160]]);
+ * const result = calc.calculate();
+ * 
+ * @example
+ * // Statik yardımcı metodlar
+ * ARDirectionCalculator.checkAlignment(currentHeading, targetAngle, tolerance);
+ * ARDirectionCalculator.getTurnDirection(currentHeading, targetAngle);
+ * ARDirectionCalculator.angleToCompass(45); // "Kuzeydoğu"
  */
+class ARDirectionCalculator {
 
-class ARDirectionPlugin {
     constructor(options = {}) {
-        // Segment verileri
         this.segments = options.segments || [];
         this.maxSegments = options.maxSegments || 5;
-        
-        // Callbacks
-        this.onDirectionCalculated = options.onDirectionCalculated || (() => {});
-        this.onArrowUpdate = options.onArrowUpdate || (() => {});
-        this.onError = options.onError || ((e) => console.error(e));
-        
-        // State
-        this.isRunning = false;
-        this.compassListener = null;
-        this.compassListenerWebkit = null;
-        this.currentDirection = null;
-        
-        // Hesaplanan yön
-        this.calculatedAngle = 0;
-        this.calculatedCompass = '';
     }
 
+    // ================================================================
+    //  STATIC YARDIMCI METODLAR
+    // ================================================================
+
     /**
-     * Line segment formatından nokta dizisine çevirir
-     * Input: [{x1, y1, x2, y2}, ...]
-     * Output: [[x, y], ...]
+     * Line segment dizisini nokta dizisine dönüştürür
+     * @param {Array<{x1,y1,x2,y2}>} segments
+     * @returns {Array<[number,number]>}
      */
     static segmentsToPoints(segments) {
         if (!segments || segments.length === 0) return [];
-        
-        const points = [];
-        
-        // İlk noktayı ekle
-        points.push([segments[0].x1, segments[0].y1]);
-        
-        // Her segmentin bitiş noktasını ekle
+        const points = [[segments[0].x1, segments[0].y1]];
         for (const seg of segments) {
             points.push([seg.x2, seg.y2]);
         }
-        
         return points;
     }
 
     /**
-     * Nokta dizisinden line segment formatına çevirir
-     * Input: [[x, y], ...]
-     * Output: [{x1, y1, x2, y2}, ...]
+     * Nokta dizisini line segment dizisine dönüştürür
+     * @param {Array<[number,number]>} points
+     * @returns {Array<{x1,y1,x2,y2}>}
      */
     static pointsToSegments(points) {
         if (!points || points.length < 2) return [];
-        
         const segments = [];
-        
         for (let i = 0; i < points.length - 1; i++) {
             segments.push({
-                x1: points[i][0],
-                y1: points[i][1],
-                x2: points[i + 1][0],
-                y2: points[i + 1][1]
+                x1: points[i][0], y1: points[i][1],
+                x2: points[i + 1][0], y2: points[i + 1][1]
             });
         }
-        
         return segments;
     }
 
     /**
-     * Segment verisi ayarlar
+     * Derece açıyı 16 yönlü pusula karşılığına çevirir
+     * @param {number} angle - 0-360 derece
+     * @returns {string} Pusula yönü (ör: "Kuzeydoğu")
      */
-    setSegments(segments, maxSegments = null) {
-        this.segments = segments || [];
-        if (maxSegments !== null) {
-            this.maxSegments = maxSegments;
-        }
-    }
-
-    /**
-     * Nokta dizisi ile segment ayarlar (converter ile)
-     */
-    setPathFromPoints(points, maxSegments = null) {
-        this.segments = ARDirectionPlugin.pointsToSegments(points);
-        if (maxSegments !== null) {
-            this.maxSegments = maxSegments;
-        }
-    }
-
-    /**
-     * Yönü hesaplar (maxSegments kadar segment kullanır)
-     */
-    calculateDirection() {
-        try {
-            if (!this.segments || this.segments.length === 0) {
-                throw new Error('Segment verisi yok');
-            }
-
-            // Kullanılacak segment sayısı
-            const segmentsToUse = this.segments.slice(0, this.maxSegments);
-            
-            // İlk ve son noktayı al
-            const startPoint = [segmentsToUse[0].x1, segmentsToUse[0].y1];
-            const lastSegment = segmentsToUse[segmentsToUse.length - 1];
-            const endPoint = [lastSegment.x2, lastSegment.y2];
-
-            // Yön vektörü
-            const dx = endPoint[0] - startPoint[0];
-            const dy = endPoint[1] - startPoint[1];
-
-            // Radyan cinsinden açı (SVG koordinat sisteminde Y aşağı)
-            // Math.atan2 kullanarak -π ile π arası açı alıyoruz
-            const angleRad = Math.atan2(dx, -dy); // -dy çünkü SVG'de Y aşağı doğru artar
-            
-            // Dereceye çevir (0-360)
-            let angleDeg = (angleRad * 180 / Math.PI + 360) % 360;
-
-            // Pusula yönü
-            const compass = this.angleToCompass(angleDeg);
-
-            this.calculatedAngle = angleDeg;
-            this.calculatedCompass = compass;
-
-            const result = {
-                compassAngle: angleDeg,
-                compass: compass,
-                startPoint: startPoint,
-                endPoint: endPoint,
-                dx: dx,
-                dy: dy,
-                segmentsUsed: segmentsToUse.length
-            };
-
-            this.currentDirection = result;
-            this.onDirectionCalculated(result);
-
-            return result;
-
-        } catch (e) {
-            this.onError(e.message);
-            return null;
-        }
-    }
-
-    /**
-     * Açıyı pusula yönüne çevirir
-     */
-    angleToCompass(angle) {
-        const directions = [
+    static angleToCompass(angle) {
+        const dirs = [
             'Kuzey', 'Kuzey-Kuzeydoğu', 'Kuzeydoğu', 'Doğu-Kuzeydoğu',
             'Doğu', 'Doğu-Güneydoğu', 'Güneydoğu', 'Güney-Güneydoğu',
             'Güney', 'Güney-Güneybatı', 'Güneybatı', 'Batı-Güneybatı',
             'Batı', 'Batı-Kuzeybatı', 'Kuzeybatı', 'Kuzey-Kuzeybatı'
         ];
-        
-        const index = Math.round(angle / 22.5) % 16;
-        return directions[index];
+        return dirs[Math.round(angle / 22.5) % 16];
     }
 
     /**
-     * Compass listener'ı başlatır
+     * İki açı arasında hizalanma kontrolü yapar
+     * @param {number} current - Mevcut pusula açısı (0-360)
+     * @param {number} target  - Hedef açı (0-360)
+     * @param {number} [tolerance=20] - Tolerans derecesi
+     * @returns {boolean}
      */
-    start() {
-        if (this.isRunning) return;
-        
-        if (!window.DeviceOrientationEvent) {
-            this.onError('DeviceOrientation API desteklenmiyor');
-            return;
+    static checkAlignment(current, target, tolerance = 20) {
+        const upper = (target + tolerance) % 360;
+        const lower = (target - tolerance + 360) % 360;
+        if (lower > upper) {
+            return current >= lower || current <= upper;
         }
-
-        this.isRunning = true;
-
-        // iOS için izin kontrolü
-        if (typeof DeviceOrientationEvent.requestPermission === 'function') {
-            DeviceOrientationEvent.requestPermission()
-                .then(response => {
-                    if (response === 'granted') {
-                        this.addCompassListeners();
-                    } else {
-                        this.onError('Cihaz yönü izni reddedildi');
-                    }
-                })
-                .catch(e => {
-                    this.onError('İzin hatası: ' + e.message);
-                });
-        } else {
-            this.addCompassListeners();
-        }
+        return current >= lower && current <= upper;
     }
 
     /**
-     * Compass event listener'larını ekler
+     * Hedefe ulaşmak için dönülmesi gereken yönü hesaplar
+     * @param {number} current - Mevcut pusula açısı
+     * @param {number} target  - Hedef açı
+     * @param {number} [tolerance=20] - Tolerans
+     * @returns {'left'|'right'|'aligned'}
      */
-    addCompassListeners() {
-        // Absolute compass (Android)
-        this.compassListener = (event) => {
-            if (event.absolute && event.alpha !== null) {
-                const compass = 360 - event.alpha;
-                this.handleCompassUpdate(compass, event.beta || 90);
-            }
+    static getTurnDirection(current, target, tolerance = 20) {
+        if (ARDirectionCalculator.checkAlignment(current, target, tolerance)) {
+            return 'aligned';
+        }
+        const clockwise = (target - current + 360) % 360;
+        const counterclockwise = (current - target + 360) % 360;
+        return clockwise <= counterclockwise ? 'right' : 'left';
+    }
+
+    /**
+     * İki açı arasındaki açısal farkı hesaplar (0-180)
+     * @param {number} a - Açı 1
+     * @param {number} b - Açı 2
+     * @returns {number} 0-180 arası fark
+     */
+    static angleDifference(a, b) {
+        const diff = Math.abs(((a - b + 180) % 360 + 360) % 360 - 180);
+        return diff;
+    }
+
+    // ================================================================
+    //  INSTANCE METODLARI
+    // ================================================================
+
+    /**
+     * Segment verilerini ayarlar
+     * @param {Array<{x1,y1,x2,y2}>} segments
+     * @param {number} [maxSegments] - Kullanılacak max segment sayısı
+     * @returns {this} Chaining için
+     */
+    setSegments(segments, maxSegments = null) {
+        this.segments = segments || [];
+        if (maxSegments !== null) this.maxSegments = maxSegments;
+        return this;
+    }
+
+    /**
+     * Nokta dizisinden segment oluşturur
+     * @param {Array<[number,number]>} points
+     * @param {number} [maxSegments]
+     * @returns {this} Chaining için
+     */
+    setPathFromPoints(points, maxSegments = null) {
+        this.segments = ARDirectionCalculator.pointsToSegments(points);
+        if (maxSegments !== null) this.maxSegments = maxSegments;
+        return this;
+    }
+
+    /**
+     * Segmentlerden yönü hesaplar
+     * İlk noktadan son noktaya olan vektörü pusula açısına çevirir.
+     * SVG koordinat sistemi kullanılır (Y aşağı doğru artar).
+     * 
+     * @returns {Object|null} Hesaplama sonucu veya null
+     * @returns {number} result.compassAngle - 0-360 derece pusula açısı
+     * @returns {string} result.compass - Pusula yönü adı
+     * @returns {Array}  result.startPoint - Başlangıç noktası [x, y]
+     * @returns {Array}  result.endPoint - Bitiş noktası [x, y]
+     * @returns {number} result.dx - X değişimi
+     * @returns {number} result.dy - Y değişimi
+     * @returns {number} result.segmentsUsed - Kullanılan segment sayısı
+     */
+    calculate() {
+        if (!this.segments || this.segments.length === 0) {
+            return null;
+        }
+
+        const segs = this.segments.slice(0, this.maxSegments);
+        const start = [segs[0].x1, segs[0].y1];
+        const last = segs[segs.length - 1];
+        const end = [last.x2, last.y2];
+
+        const dx = end[0] - start[0];
+        const dy = end[1] - start[1];
+
+        // SVG koordinat sisteminde Y aşağı doğru artar
+        // atan2(dx, -dy) ile kuzey=0° referanslı açı hesaplanır
+        const angleRad = Math.atan2(dx, -dy);
+        const angleDeg = (angleRad * 180 / Math.PI + 360) % 360;
+
+        return {
+            compassAngle: angleDeg,
+            compass: ARDirectionCalculator.angleToCompass(angleDeg),
+            startPoint: start,
+            endPoint: end,
+            dx: dx,
+            dy: dy,
+            segmentsUsed: segs.length
         };
-
-        // Webkit compass (iOS)
-        this.compassListenerWebkit = (event) => {
-            if (event.webkitCompassHeading !== undefined) {
-                const compass = event.webkitCompassHeading;
-                this.handleCompassUpdate(compass, event.beta || 90);
-            }
-        };
-
-        window.addEventListener('deviceorientationabsolute', this.compassListener, true);
-        window.addEventListener('deviceorientation', this.compassListenerWebkit, true);
     }
 
     /**
-     * Pusula güncellemesini işler
-     */
-    handleCompassUpdate(compassHeading, beta) {
-        if (!this.isRunning) return;
-
-        const arrowData = {
-            currentCompass: compassHeading,
-            targetCompass: this.calculatedAngle,
-            beta: beta,
-            isAligned: this.checkAlignment(compassHeading)
-        };
-
-        this.onArrowUpdate(arrowData);
-    }
-
-    /**
-     * Yön hizalamasını kontrol eder
-     */
-    checkAlignment(currentCompass, tolerance = 20) {
-        const target = this.calculatedAngle;
-        const upperBound = (target + tolerance) % 360;
-        const lowerBound = (target - tolerance + 360) % 360;
-
-        if (lowerBound > upperBound) {
-            return currentCompass >= lowerBound || currentCompass <= upperBound;
-        }
-        return currentCompass >= lowerBound && currentCompass <= upperBound;
-    }
-
-    /**
-     * Durdurur ve temizler
-     */
-    stop() {
-        this.isRunning = false;
-
-        if (this.compassListener) {
-            window.removeEventListener('deviceorientationabsolute', this.compassListener, true);
-            this.compassListener = null;
-        }
-
-        if (this.compassListenerWebkit) {
-            window.removeEventListener('deviceorientation', this.compassListenerWebkit, true);
-            this.compassListenerWebkit = null;
-        }
-    }
-
-    /**
-     * Debug için mevcut durumu döndürür
+     * Mevcut durumu döndürür (debug için)
      */
     getState() {
         return {
-            isRunning: this.isRunning,
             segmentCount: this.segments.length,
-            maxSegments: this.maxSegments,
-            calculatedAngle: this.calculatedAngle,
-            calculatedCompass: this.calculatedCompass,
-            currentDirection: this.currentDirection
+            maxSegments: this.maxSegments
         };
     }
 }
 
-// Export for module systems
+// CommonJS export
 if (typeof module !== 'undefined' && module.exports) {
-    module.exports = ARDirectionPlugin;
+    module.exports = ARDirectionCalculator;
 }
